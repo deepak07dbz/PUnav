@@ -1,0 +1,28 @@
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <DropDownPreference
+        app:key="Location_delay"
+        app:title="Change location delay"
+        android:entries="@array/reply_entries"
+        app:useSimpleSummaryProvider="true"
+        android:entryValues="@array/reply_values"
+        app:isPreferenceVisible="true"/>
+
+    <DropDownPreference
+        app:key="Accelerometer_delay"
+        app:title="Change accelerometer delay"
+        android:entries="@array/reply_entries"
+        app:useSimpleSummaryProvider="true"
+        android:entryValues="@array/reply_values"
+        app:isPreferenceVisible="true"/>
+
+    <DropDownPreference
+        app:key="Timestamp"
+        app:title="Change timestamp delay"
+        android:entries="@array/reply_entries"
+        app:useSimpleSummaryProvider="true"
+        android:entryValues="@array/reply_values"
+        app:isPreferenceVisible="true"/>
+
+</PreferenceScreen>
