@@ -50,7 +50,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     TextView x, y, z, lat, lon, currentDelays;
     Button stop, del, start;
-    FloatingActionButton settings;
+    FloatingActionButton settings, mapSwitch;
     ListView records;
     private double xval = 0, yval = 0, zval = 0;
     private boolean shouldRecord;
@@ -84,6 +84,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         start = findViewById(R.id.start);
         records = findViewById(R.id.Lview);
         settings = findViewById(R.id.fab);
+        mapSwitch = findViewById(R.id.floatingActionButton);
         currentDelays = findViewById(R.id.txtdelay);
 
         x.setText("0.00");
@@ -185,6 +186,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             @Override
             public void onClick(View view) {
                 Intent intent = new Intent(MainActivity.this, SettingsActivity.class);
+                startActivity(intent);
+            }
+        });
+        mapSwitch.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent = new Intent(MainActivity.this, MapActivity.class);
                 startActivity(intent);
             }
         });
