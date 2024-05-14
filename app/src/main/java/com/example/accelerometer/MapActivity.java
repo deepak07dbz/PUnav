@@ -1,8 +1,13 @@
 package com.example.accelerometer;
 
+import static com.example.accelerometer.FileUtils.copyAssetsToStorage;
+
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -49,6 +54,8 @@ import org.oscim.theme.VtmThemes;
 import org.oscim.tiling.source.mapfile.MapFileTileSource;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,9 +70,10 @@ public class MapActivity extends AppCompatActivity {
     private volatile boolean shortestPathRunning = false;
     private String currentArea = "latest";
     private File mapsFolder;
-    private ItemizedLayer<MarkerItem> itemizedLayer;
+    private ItemizedLayer itemizedLayer;
     private PathLayer pathLayer;
-    private static final int READ_PERMISSION_CODE = 100;
+    private static final int WRITE_PERMISSION_CODE = 101;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,34 +87,73 @@ public class MapActivity extends AppCompatActivity {
 
         mapView = new MapView(this);
 
+
         final EditText input = new EditText(this);
         input.setText(currentArea);
-        boolean greaterOrEqKitkat = Build.VERSION.SDK_INT >= 19;
-        if (greaterOrEqKitkat) {
-            if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
-                logUser("GraphHopper is not usable without an external storage!");
-                return;
-            }
-            mapsFolder = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "/graphhopper/maps/");
-        } else
-            mapsFolder = new File(Environment.getExternalStorageDirectory(), "/graphhopper/maps/");
 
+        File baseDir;
+
+        if (Build.VERSION.SDK_INT >= 29)
+        { // ExternalStoragePublicDirectory Deprecated since android Q
+            baseDir = this.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+            if (!Environment.getExternalStorageState(baseDir).equals(Environment.MEDIA_MOUNTED))
+            {
+                Toast.makeText(this, "Not usable without an external storage!", Toast.LENGTH_SHORT).show();
+                baseDir = null;
+            }
+        }
+        else if (Build.VERSION.SDK_INT >= 19)
+        { // greater or equal to Kitkat
+            if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED))
+            {
+                Toast.makeText(this, "Not usable without an external storage!", Toast.LENGTH_SHORT).show();
+                baseDir = null;
+            }
+             baseDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        }
+        else
+        {
+            baseDir = Environment.getExternalStorageDirectory();
+        }
+
+        if (baseDir != null) {
+            mapsFolder = new File(String.valueOf(baseDir));
+        }
         if (!mapsFolder.exists())
             mapsFolder.mkdirs();
 
-
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
             // Permission is not granted, request it
             ActivityCompat.requestPermissions(this,
-                    new String[]{android.Manifest.permission.READ_EXTERNAL_STORAGE},
-                    READ_PERMISSION_CODE);
+                    new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    WRITE_PERMISSION_CODE);
         } else {
-            // Permission has already been granted, proceed with accessing the file
+            copyAssetsToStorageIfNeeded(this, "maps/latest-gh", "latest-gh");
             chooseArea();
         }
     }
+
+    public static void copyAssetsToStorageIfNeeded(Context context, String sourceFolder, String destinationFolder) {
+        if (!shouldCopyFiles(context, destinationFolder)) {
+            return;
+        }
+
+        boolean allCopied = copyAssetsToStorage(context, sourceFolder, destinationFolder);
+        Log.d("COPY", String.valueOf(allCopied));
+
+        if(allCopied) {
+            SharedPreferences.Editor editor = context.getSharedPreferences("FileCopyPrefs", Context.MODE_PRIVATE).edit();
+            editor.putBoolean(destinationFolder + "_copied", true);
+            editor.apply();
+        }
+    }
+
+    private static boolean shouldCopyFiles(Context context, String destinationFolder) {
+        SharedPreferences prefs = context.getSharedPreferences("FileCopyPrefs", Context.MODE_PRIVATE);
+        return !prefs.getBoolean(destinationFolder + "_copied", false);
+    }
+
 
     private void chooseArea(){
         prepareInProgress = true;
@@ -114,6 +161,7 @@ public class MapActivity extends AppCompatActivity {
         Log.d("OPEN", "chooseArea: " + areaFolder);
         Log.d("OPEN", "opening file");
         loadMap(areaFolder);
+
     }
 
     void loadMap(File areaFolder) {
@@ -124,10 +172,13 @@ public class MapActivity extends AppCompatActivity {
 
         // Map file source
         MapFileTileSource tileSource = new MapFileTileSource();
-        File mapFile = new File(areaFolder, currentArea + ".map").getAbsoluteFile();
-        //tileSource.setMapFile(new File(areaFolder, currentArea + ".map").getAbsolutePath());
-        tileSource.setMapFile(String.valueOf(mapFile));
-        Log.d("LOAD", "loadMap: " + mapFile);
+        File mapFile = new File(areaFolder, currentArea + ".map");
+        if(!mapFile.exists()){
+            Log.d("LOAD", "mapFile not found");
+            return;
+        }
+        tileSource.setMapFile(mapFile.getAbsolutePath());
+        //Log.d("LOAD", "loadMap: " + );
         Log.d("LOAD", "loadMap: " + tileSource);
         VectorTileLayer l = mapView.map().setBaseMap(tileSource);
         mapView.map().setTheme(VtmThemes.DEFAULT);
@@ -135,12 +186,11 @@ public class MapActivity extends AppCompatActivity {
         mapView.map().layers().add(new LabelLayer(mapView.map(), l));
 
         // Markers layer
-        itemizedLayer = new ItemizedLayer<>(mapView.map(), (MarkerSymbol) null);
+        itemizedLayer = new ItemizedLayer(mapView.map(), (MarkerSymbol) null);
         mapView.map().layers().add(itemizedLayer);
 
         // Map position
-        GeoPoint mapCenter = tileSource.getMapInfo().boundingBox.getCenterPoint();
-        mapView.map().setMapPosition(mapCenter.getLatitude(), mapCenter.getLongitude(), 1 << 15);
+        mapView.map().setMapPosition(18.551576, 73.831151, 1 << 17);
 
         setContentView(mapView);
         loadGraphStorage();
@@ -188,7 +238,6 @@ public class MapActivity extends AppCompatActivity {
         return pathLayer;
     }
 
-    //@SuppressWarnings("deprecation")
     @SuppressWarnings("deprecation")
     private MarkerItem createMarkerItem(GeoPoint p, int resource) {
         Drawable drawable = getResources().getDrawable(resource);
