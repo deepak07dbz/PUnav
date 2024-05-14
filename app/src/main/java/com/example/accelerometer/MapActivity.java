@@ -191,8 +191,10 @@ public class MapActivity extends AppCompatActivity {
 
         // Map position
         mapView.map().setMapPosition(18.551576, 73.831151, 1 << 17);
+        GeoPoint p = new GeoPoint(18.551576, 73.831151);
 
         setContentView(mapView);
+        itemizedLayer.addItem(createMarkerItem(p, R.drawable.location_marker));
         loadGraphStorage();
     }
 

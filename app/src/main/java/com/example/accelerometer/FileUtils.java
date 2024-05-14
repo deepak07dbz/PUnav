@@ -17,7 +17,6 @@ public class FileUtils {
         String[] files;
         boolean allCopied = true;
         try {
-            // List files in the assets folder
             files = assetManager.list(sourceFolder);
             if (files != null) {
                 for (String filename : files) {
