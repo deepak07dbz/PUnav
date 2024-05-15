@@ -1,17 +1,28 @@
 package com.example.accelerometer;
 
 import static com.example.accelerometer.FileUtils.copyAssetsToStorage;
+import static com.example.accelerometer.MainActivity.LOCATION_DELAY;
+import static com.example.accelerometer.MainActivity.SENSOR_DELAY;
+import static com.example.accelerometer.MainActivity.TIME_DELAY;
+import static com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.location.Location;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Looper;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -19,6 +30,7 @@ import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -26,6 +38,15 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import com.example.accelerometer.data.Helper;
+import com.example.accelerometer.data.RecordsModel;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.graphhopper.GHRequest;
 import com.graphhopper.GHResponse;
@@ -64,8 +85,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MapActivity extends AppCompatActivity {
+public class MapActivity extends AppCompatActivity implements SensorEventListener {
 
+    private static final int PERMISSIONS_FINE_LOCATION = 102;
     private MapView mapView;
     private GraphHopper hopper;
     private GeoPoint start;
@@ -77,6 +99,16 @@ public class MapActivity extends AppCompatActivity {
     private ItemizedLayer itemizedLayer;
     private PathLayer pathLayer;
     private static final int WRITE_PERMISSION_CODE = 101;
+    MapActions mapActions;
+    SharedPreferences sharedPreferences;
+    long lastUpdateSensor = 0;
+    long recordCounter = 0;
+    private List<RecordsModel> temp;
+    Helper helper;
+    private FusedLocationProviderClient fusedLocationClient;
+    Location currentLocation;
+    LocationRequest locationRequest;
+    private LocationCallback locationCallback;
 
 
     @Override
@@ -89,7 +121,7 @@ public class MapActivity extends AppCompatActivity {
             return insets;
         });
 
-
+        temp = new ArrayList<>();
         mapView = new MapView(this);
 
 
@@ -138,6 +170,48 @@ public class MapActivity extends AppCompatActivity {
             chooseArea();
         }
         customMapView();
+        Context context = getApplicationContext();
+        sharedPreferences = context.getSharedPreferences("Setting_values", Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putInt("sensor", SENSOR_DELAY);
+        editor.putInt("location", LOCATION_DELAY);
+        editor.putInt("timeStamp", TIME_DELAY);
+        editor.putInt("defaultS", 1);
+        editor.putInt("defaultL", 1);
+        editor.putInt("defaultT", 1);
+        editor.apply();
+        initSensor();
+        initLocation();
+    }
+
+    private void initLocation() {
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+        locationRequest = new LocationRequest.Builder(PRIORITY_HIGH_ACCURACY, sharedPreferences.getInt("location", 1000))
+                .setIntervalMillis(sharedPreferences.getInt("location", 1000))
+                .setMinUpdateIntervalMillis(sharedPreferences.getInt("location", 1000))
+                .build();
+        lastLocation();
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(@NonNull LocationResult locationResult) {
+                super.onLocationResult(locationResult);
+                if (locationResult.getLastLocation() != null) {
+                    currentLocation = locationResult.getLastLocation();
+                    updateLocation();
+                }else {
+                    Toast.makeText(MapActivity.this, "last location was null!", Toast.LENGTH_SHORT).show();
+                }
+            }
+        };
+    }
+
+    private void initSensor() {
+        SensorManager sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+
+        Sensor accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+
+        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+
     }
 
     //to bring ui elements on top of map
@@ -147,6 +221,7 @@ public class MapActivity extends AppCompatActivity {
         inclusionViewGroup.addView(inflate);
 
         inclusionViewGroup.getParent().bringChildToFront(inclusionViewGroup);
+        mapActions = new MapActions(this, mapView);
     }
 
     public static void copyAssetsToStorageIfNeeded(Context context, String sourceFolder, String destinationFolder) {
@@ -207,7 +282,6 @@ public class MapActivity extends AppCompatActivity {
         // Map position
         mapView.map().setMapPosition(18.551576, 73.831151, 1 << 17);
         GeoPoint p = new GeoPoint(18.551576, 73.831151);
-        itemizedLayer.addItem(createMarkerItem(p, R.drawable.location_marker));
 
        // setContentView(mapView);
         ViewGroup.LayoutParams params =
@@ -334,6 +408,50 @@ public class MapActivity extends AppCompatActivity {
         return false;
     }
 
+    @Override
+    public void onSensorChanged(SensorEvent sensorEvent) {
+        if (sensorEvent.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - lastUpdateSensor >= sharedPreferences.getInt("sensor", 100)) {
+                lastUpdateSensor = currentTime;
+
+                    mapActions.xAxis.setText(String.valueOf(sensorEvent.values[0]));
+                    mapActions.yAxis.setText(String.valueOf(sensorEvent.values[1]));
+                    mapActions.zAxis.setText(String.valueOf(sensorEvent.values[2]));
+
+                processSensorData(sensorEvent);
+            }
+        }
+    }
+    //unoptimized
+    private void processSensorData(SensorEvent sensorEvent) {
+            addData(new RecordsModel(sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]));
+    }
+
+    private void addData(RecordsModel recordsModel) {
+        if(temp.size() != 100){
+            if(recordCounter % sharedPreferences.getInt("timeStamp", 10) == 0){
+                temp.add(new RecordsModel(recordCounter));
+                recordCounter++;
+            }
+            temp.add(recordsModel);
+            recordCounter++;
+        }else {
+            int i = 0;
+            while(i < temp.size()){
+                helper = new Helper(MapActivity.this);
+                helper.addOne(temp.get(i));
+                i++;
+            }
+            temp.clear();
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int i) {
+
+    }
+
     class MapEventsReceiver extends Layer implements GestureListener {
 
         MapEventsReceiver(org.oscim.map.Map map) {
@@ -407,9 +525,55 @@ public class MapActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onBackPressed() {
-        super.onBackPressed();
-        Intent intent = new Intent(MapActivity.this, MainActivity.class);
-        startActivity(intent);
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (requestCode == PERMISSIONS_FINE_LOCATION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                lastLocation();
+                startLocationUpdates();
+            } else {
+                Toast.makeText(this, "Need precise location", Toast.LENGTH_SHORT).show();
+                finish();
+            }
+        }
     }
+    private void lastLocation() {
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, PERMISSIONS_FINE_LOCATION);
+        }else {
+
+            Task<Location> task = fusedLocationClient.getLastLocation();
+            task.addOnSuccessListener(new OnSuccessListener<Location>() {
+                @Override
+                public void onSuccess(Location location) {
+                    if (location != null) {
+                        currentLocation = location;
+                        updateLocation();
+                        startLocationUpdates();
+                    } else {
+                        Toast.makeText(MapActivity.this, "Location not found", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            });
+        }
+    }
+
+    private void updateLocation() {
+        itemizedLayer.removeAllItems();
+        mapActions.lat.setText(String.valueOf(currentLocation.getLatitude()));
+        mapActions.lon.setText(String.valueOf(currentLocation.getLongitude()));
+        GeoPoint p = new GeoPoint(currentLocation.getLatitude(), currentLocation.getLongitude());
+        itemizedLayer.addItem(createMarkerItem(p, R.drawable.location_marker));
+        addData(new RecordsModel(currentLocation.getLongitude(), currentLocation.getLatitude()));
+    }
+
+    private void startLocationUpdates() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+        } else {
+            Toast.makeText(this, "Check permissions", Toast.LENGTH_SHORT).show();
+        }
+    }
+
 }

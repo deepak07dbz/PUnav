@@ -48,17 +48,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     public static int TIME_DELAY = 10;             //in records
     public static int SENSOR_DELAY = 100;          //in milliseconds
 
-    TextView x, y, z, lat, lon, currentDelays;
     Button stop, del, start;
     FloatingActionButton settings, mapSwitch;
     ListView records;
-    private double xval = 0, yval = 0, zval = 0;
     private boolean shouldRecord;
     private boolean isShow;
-    RecordsModel recordsModel;
     Helper helper;
     ArrayAdapter<RecordsModel> readingArrayAdapter;
-    List<RecordsModel> everyone;
     private FusedLocationProviderClient fusedLocationClient;
     Location currentLocation;
     LocationRequest locationRequest;
@@ -74,22 +70,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        x = findViewById(R.id.txt1);
-        y = findViewById(R.id.txt2);
-        z = findViewById(R.id.txt3);
-        lat = findViewById(R.id.txt4);
-        lon = findViewById(R.id.txt5);
         stop = findViewById(R.id.button);
         del = findViewById(R.id.del);
         start = findViewById(R.id.start);
         records = findViewById(R.id.Lview);
         settings = findViewById(R.id.fab);
         mapSwitch = findViewById(R.id.floatingActionButton);
-        currentDelays = findViewById(R.id.txtdelay);
-
-        x.setText("0.00");
-        y.setText("0.00");
-        z.setText("0.00");
 
         temp = new ArrayList<>();
         shouldRecord = false;
@@ -116,7 +102,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         locationRequest = new LocationRequest.Builder(PRIORITY_HIGH_ACCURACY, sharedPref.getInt("location", 1000))
                 .setIntervalMillis(sharedPref.getInt("location", 1000))
-//                .setMaxUpdateDelayMillis(LOCATION_DELAY + 1000)
                 .setMinUpdateIntervalMillis(sharedPref.getInt("location", 1000))
                 .build();
         lastLocation();
@@ -124,14 +109,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             @Override
             public void onLocationResult(@NonNull LocationResult locationResult) {
                 super.onLocationResult(locationResult);
-               // long current = System.currentTimeMillis();
                 if (locationResult.getLastLocation() != null) {
-//                    if(current - lastUpdateLocation >= LOCATION_DELAY) {
-//                        lastUpdateLocation = current;
-
                         currentLocation = locationResult.getLastLocation();
                         updateLocation();
-                    //}
                 }else {
                     Toast.makeText(MainActivity.this, "last location was null!", Toast.LENGTH_SHORT).show();
                 }
@@ -238,13 +218,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 lastUpdateSensor = currentTime;
 
                 if (isShow) {
-                    x.setText(String.valueOf(sensorEvent.values[0]));
-                    y.setText(String.valueOf(sensorEvent.values[1]));
-                    z.setText(String.valueOf(sensorEvent.values[2]));
+//                    x.setText(String.valueOf(sensorEvent.values[0]));
+//                    y.setText(String.valueOf(sensorEvent.values[1]));
+//                    z.setText(String.valueOf(sensorEvent.values[2]));
                 }
-        //        xval = sensorEvent.values[0];
-        //        yval = sensorEvent.values[1];
-        //        zval = sensorEvent.values[2];
                 processSensorData(sensorEvent);
             }
         }
@@ -293,8 +270,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }
     }
     private void updateLocation() {
-        lat.setText(String.valueOf(currentLocation.getLatitude()));
-        lon.setText(String.valueOf(currentLocation.getLongitude()));
+//        lat.setText(String.valueOf(currentLocation.getLatitude()));
+//        lon.setText(String.valueOf(currentLocation.getLongitude()));
         if (shouldRecord) {
             addData(new RecordsModel(currentLocation.getLongitude(), currentLocation.getLatitude()));
         }

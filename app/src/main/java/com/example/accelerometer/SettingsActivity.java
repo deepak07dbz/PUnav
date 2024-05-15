@@ -5,6 +5,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -12,6 +13,7 @@ import android.widget.Button;
 import android.widget.ListView;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -22,6 +24,8 @@ import androidx.preference.PreferenceManager;
 import androidx.preference.PreferenceScreen;
 import androidx.preference.SwitchPreferenceCompat;
 
+import com.example.accelerometer.data.Helper;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
 
 public class SettingsActivity extends AppCompatActivity {
@@ -30,6 +34,7 @@ public class SettingsActivity extends AppCompatActivity {
     ArrayAdapter<String> options;
     ListView optionList;
     Button apply;
+    FloatingActionButton fabExport;
     final String[] locationChoices = {"1", "3", "5"};
     final String[] sensorChoices = {"0.06", "0.1", "0.3"};
     final String[] timestamps = {"5", "10", "20"};
@@ -46,6 +51,7 @@ public class SettingsActivity extends AppCompatActivity {
         setContentView(R.layout.settings_activity);
         optionList = findViewById(R.id.optionsview);
         apply = findViewById(R.id.button6);
+        fabExport = findViewById(R.id.settingsFAB);
         showOptions();
 
          checkedItemL = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("defaultL", 1);
@@ -77,6 +83,15 @@ public class SettingsActivity extends AppCompatActivity {
                 showConfirmation();
             }
         });
+
+        fabExport.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Helper helper = new Helper(SettingsActivity.this);
+                helper.deleteAll();
+                Toast.makeText(SettingsActivity.this, "exported", Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void showConfirmation() {
@@ -91,7 +106,7 @@ public class SettingsActivity extends AppCompatActivity {
                 MainActivity.TIME_DELAY = newTimestamp;
                 MainActivity.LOCATION_DELAY = newLocation;
                 MainActivity.SENSOR_DELAY = (int) (newSensor * 1000);
-                Intent intent = new Intent(SettingsActivity.this, MainActivity.class);
+                Intent intent = new Intent(SettingsActivity.this, MapActivity.class);
                 startActivity(intent);
             }
         });
@@ -130,8 +145,6 @@ public class SettingsActivity extends AppCompatActivity {
         builder.show();
     }
 
-    private void saveUserChoice() {
-    }
 
     private void timeStampOptionsDialog(String[] timestamps) {
         AlertDialog.Builder builder = new AlertDialog.Builder(SettingsActivity.this);
