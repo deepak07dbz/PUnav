@@ -13,6 +13,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.Toast;
 
@@ -23,6 +26,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.graphhopper.GHRequest;
 import com.graphhopper.GHResponse;
 import com.graphhopper.GraphHopper;
@@ -68,7 +72,7 @@ public class MapActivity extends AppCompatActivity {
     private GeoPoint end;
     private volatile boolean prepareInProgress = false;
     private volatile boolean shortestPathRunning = false;
-    private String currentArea = "latest";
+    private final String currentArea = "latest";
     private File mapsFolder;
     private ItemizedLayer itemizedLayer;
     private PathLayer pathLayer;
@@ -78,12 +82,13 @@ public class MapActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_map);
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+        setContentView(R.layout.custom_map);
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.custom_map_view), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
+
 
         mapView = new MapView(this);
 
@@ -132,6 +137,16 @@ public class MapActivity extends AppCompatActivity {
             copyAssetsToStorageIfNeeded(this, "maps/latest-gh", "latest-gh");
             chooseArea();
         }
+        customMapView();
+    }
+
+    //to bring ui elements on top of map
+    private void customMapView() {
+        ViewGroup inclusionViewGroup = (ViewGroup) findViewById(R.id.custom_map_view);
+        View inflate = LayoutInflater.from(this).inflate(R.layout.activity_map, null);
+        inclusionViewGroup.addView(inflate);
+
+        inclusionViewGroup.getParent().bringChildToFront(inclusionViewGroup);
     }
 
     public static void copyAssetsToStorageIfNeeded(Context context, String sourceFolder, String destinationFolder) {
@@ -192,9 +207,12 @@ public class MapActivity extends AppCompatActivity {
         // Map position
         mapView.map().setMapPosition(18.551576, 73.831151, 1 << 17);
         GeoPoint p = new GeoPoint(18.551576, 73.831151);
-
-        setContentView(mapView);
         itemizedLayer.addItem(createMarkerItem(p, R.drawable.location_marker));
+
+       // setContentView(mapView);
+        ViewGroup.LayoutParams params =
+                new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        this.addContentView(mapView, params);
         loadGraphStorage();
     }
 
