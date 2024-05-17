@@ -4,11 +4,9 @@ import static com.example.accelerometer.FileUtils.copyAssetsToStorage;
 import static com.example.accelerometer.MainActivity.LOCATION_DELAY;
 import static com.example.accelerometer.MainActivity.SENSOR_DELAY;
 import static com.example.accelerometer.MainActivity.TIME_DELAY;
-import static com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY;
 
 import android.Manifest;
 import android.content.Context;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
@@ -17,13 +15,11 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.location.Location;
-import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
-import android.os.Looper;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -31,7 +27,6 @@ import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -41,14 +36,11 @@ import androidx.core.view.WindowInsetsCompat;
 
 import com.example.accelerometer.data.Helper;
 import com.example.accelerometer.data.RecordsModel;
+import com.google.android.gms.location.CurrentLocationRequest;
 import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationCallback;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.graphhopper.GHRequest;
 import com.graphhopper.GHResponse;
 import com.graphhopper.GraphHopper;
@@ -82,15 +74,12 @@ import org.oscim.theme.VtmThemes;
 import org.oscim.tiling.source.mapfile.MapFileTileSource;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MapActivity extends AppCompatActivity implements SensorEventListener {
 
-    private static final int PERMISSIONS_FINE_LOCATION = 102;
     public boolean markerAdded = false;
     private static MapView mapView;
     private GraphHopper hopper;
@@ -111,12 +100,13 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     private List<RecordsModel> temp;
     Helper helper;
     private FusedLocationProviderClient fusedLocationClient;
-    public static Location currentLocation;
-    LocationRequest locationRequest;
-    private LocationCallback locationCallback;
     private MarkerItem in, out, current;
+    //using last location
     Handler handler;
     Runnable runnable;
+    public static Location userLocation;
+    //using current location
+    CurrentLocationRequest locationRequest;
 
 
     @Override
@@ -138,26 +128,19 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
 
         File baseDir;
 
-        if (Build.VERSION.SDK_INT >= 29)
-        { // ExternalStoragePublicDirectory Deprecated since android Q
+        if (Build.VERSION.SDK_INT >= 29) { // ExternalStoragePublicDirectory Deprecated since android Q
             baseDir = this.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-            if (!Environment.getExternalStorageState(baseDir).equals(Environment.MEDIA_MOUNTED))
-            {
+            if (!Environment.getExternalStorageState(baseDir).equals(Environment.MEDIA_MOUNTED)) {
                 Toast.makeText(this, "Not usable without an external storage!", Toast.LENGTH_SHORT).show();
                 baseDir = null;
             }
-        }
-        else if (Build.VERSION.SDK_INT >= 19)
-        { // greater or equal to Kitkat
-            if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED))
-            {
+        } else if (Build.VERSION.SDK_INT >= 19) { // greater or equal to Kitkat
+            if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
                 Toast.makeText(this, "Not usable without an external storage!", Toast.LENGTH_SHORT).show();
                 baseDir = null;
             }
-             baseDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-        }
-        else
-        {
+            baseDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        } else {
             baseDir = Environment.getExternalStorageDirectory();
         }
 
@@ -178,6 +161,13 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
             chooseArea();
         }
         customMapView();
+        updateSharedPref();
+        initSensor();
+        initLocation();
+    }
+
+
+    private void updateSharedPref() {
         Context context = getApplicationContext();
         sharedPreferences = context.getSharedPreferences("Setting_values", Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPreferences.edit();
@@ -188,30 +178,20 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         editor.putInt("defaultL", 1);
         editor.putInt("defaultT", 1);
         editor.apply();
-        initSensor();
-        initLocation();
     }
 
     private void initLocation() {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-        locationRequest = new LocationRequest.Builder(0).setPriority(PRIORITY_HIGH_ACCURACY).setIntervalMillis(0).setMinUpdateIntervalMillis(0).build();
-//        locationRequest = new LocationRequest.Builder(PRIORITY_HIGH_ACCURACY, sharedPreferences.getInt("location", 1000))
-//                .setIntervalMillis(sharedPreferences.getInt("location", 1000))
-//                .setMinUpdateIntervalMillis(sharedPreferences.getInt("location", 1000))
-//                .build();
-        lastLocation();
-        locationCallback = new LocationCallback() {
+        locationRequest = new CurrentLocationRequest.Builder().build();
+        handler = new Handler();
+        handler.postDelayed(runnable = new Runnable() {
             @Override
-            public void onLocationResult(@NonNull LocationResult locationResult) {
-                super.onLocationResult(locationResult);
-                if (locationResult.getLastLocation() != null) {
-                    currentLocation = locationResult.getLastLocation();
-                    updateLocation();
-                }else {
-                    Toast.makeText(MapActivity.this, "last location was null!", Toast.LENGTH_SHORT).show();
-                }
+            public void run() {
+                handler.postDelayed(runnable, sharedPreferences.getInt("location", 3000));
+                checkLocationPermissions();
             }
-        };
+        }, sharedPreferences.getInt("location", 3000) );
+
     }
 
     private void initSensor() {
@@ -241,7 +221,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         boolean allCopied = copyAssetsToStorage(context, sourceFolder, destinationFolder);
         Log.d("COPY", String.valueOf(allCopied));
 
-        if(allCopied) {
+        if (allCopied) {
             SharedPreferences.Editor editor = context.getSharedPreferences("FileCopyPrefs", Context.MODE_PRIVATE).edit();
             editor.putBoolean(destinationFolder + "_copied", true);
             editor.apply();
@@ -254,7 +234,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     }
 
 
-    private void chooseArea(){
+    private void chooseArea() {
         prepareInProgress = true;
         final File areaFolder = new File(mapsFolder, currentArea + "-gh");
         Log.d("OPEN", "chooseArea: " + areaFolder);
@@ -272,7 +252,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         // Map file source
         MapFileTileSource tileSource = new MapFileTileSource();
         File mapFile = new File(areaFolder, currentArea + ".map");
-        if(!mapFile.exists()){
+        if (!mapFile.exists()) {
             Log.d("LOAD", "mapFile not found");
             return;
         }
@@ -291,7 +271,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         // Map position
         mapView.map().setMapPosition(18.551576, 73.831151, 1 << 17);
 
-       // setContentView(mapView);
+        // setContentView(mapView);
         ViewGroup.LayoutParams params =
                 new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         this.addContentView(mapView, params);
@@ -423,30 +403,31 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
             if (currentTime - lastUpdateSensor >= sharedPreferences.getInt("sensor", 100)) {
                 lastUpdateSensor = currentTime;
 
-                    mapActions.xAxis.setText(String.valueOf(sensorEvent.values[0]));
-                    mapActions.yAxis.setText(String.valueOf(sensorEvent.values[1]));
-                    mapActions.zAxis.setText(String.valueOf(sensorEvent.values[2]));
+                mapActions.xAxis.setText(String.valueOf(sensorEvent.values[0]));
+                mapActions.yAxis.setText(String.valueOf(sensorEvent.values[1]));
+                mapActions.zAxis.setText(String.valueOf(sensorEvent.values[2]));
 
                 //processSensorData(sensorEvent);
             }
         }
     }
+
     //unoptimized
     private void processSensorData(SensorEvent sensorEvent) {
-            addData(new RecordsModel(sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]));
+        addData(new RecordsModel(sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]));
     }
 
     private void addData(RecordsModel recordsModel) {
-        if(temp.size() != 100){
-            if(recordCounter % sharedPreferences.getInt("timeStamp", 10) == 0){
+        if (temp.size() != 100) {
+            if (recordCounter % sharedPreferences.getInt("timeStamp", 10) == 0) {
                 temp.add(new RecordsModel(recordCounter));
                 recordCounter++;
             }
             temp.add(recordsModel);
             recordCounter++;
-        }else {
+        } else {
             int i = 0;
-            while(i < temp.size()){
+            while (i < temp.size()) {
                 helper = new Helper(MapActivity.this);
                 helper.addOne(temp.get(i));
                 i++;
@@ -524,6 +505,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     protected void onResume() {
         super.onResume();
         mapView.onResume();
+        updateSharedPref();
     }
 
     @Override
@@ -546,61 +528,52 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         mapView.map().destroy();
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-
-        if (requestCode == PERMISSIONS_FINE_LOCATION) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                lastLocation();
-                startLocationUpdates();
-            } else {
-                Toast.makeText(this, "Need precise location", Toast.LENGTH_SHORT).show();
-                finish();
-            }
-        }
-    }
-    private void lastLocation() {
-        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, PERMISSIONS_FINE_LOCATION);
-        }else {
-
-            Task<Location> task = fusedLocationClient.getLastLocation();
-            task.addOnSuccessListener(new OnSuccessListener<Location>() {
-                @Override
-                public void onSuccess(Location location) {
-                    if (location != null) {
-                        currentLocation = location;
-                        updateLocation();
-                        startLocationUpdates();
-                    } else {
-                        Toast.makeText(MapActivity.this, "Location not found", Toast.LENGTH_SHORT).show();
-                    }
-                }
-            });
-        }
-    }
 
     private void updateLocation() {
         if (markerAdded)
             itemizedLayer.removeItem(getMarkerItem(current.getMarker()));
 
-        mapActions.lat.setText(String.valueOf(currentLocation.getLatitude()));
-        mapActions.lon.setText(String.valueOf(currentLocation.getLongitude()));
-        GeoPoint p = new GeoPoint(currentLocation.getLatitude(), currentLocation.getLongitude());
+        mapActions.lat.setText(String.valueOf(userLocation.getLatitude()));
+        mapActions.lon.setText(String.valueOf(userLocation.getLongitude()));
+        GeoPoint p = new GeoPoint(userLocation.getLatitude(), userLocation.getLongitude());
         current = createMarkerItem(p, R.drawable.location_marker);
         itemizedLayer.addItem(current);
         markerAdded = true;
-        addData(new RecordsModel(currentLocation.getLongitude(), currentLocation.getLatitude()));
+        addData(new RecordsModel(userLocation.getLongitude(), userLocation.getLatitude()));
     }
 
-    private void startLocationUpdates() {
+    private void checkLocationPermissions() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+            getUserLocation();
         } else {
             Toast.makeText(this, "Check permissions", Toast.LENGTH_SHORT).show();
         }
     }
+
+    private void getUserLocation() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
+        Task<Location> task = fusedLocationClient.getCurrentLocation(locationRequest, null);
+        task.addOnSuccessListener(new OnSuccessListener<Location>() {
+            @Override
+            public void onSuccess(Location location) {
+                if (location != null) {
+                    userLocation = location;
+                    Log.d("LOCATION", String.valueOf(userLocation.getLatitude()) + " " + userLocation.getLongitude());
+                    updateLocation();
+                }
+            }
+        });
+    }
+
     public static void getCenter(GeoPoint g, int zoom, float bearing, float tilt) {
         if (zoom == 0) {
             zoom = mapView.map().getMapPosition().zoomLevel;
@@ -612,5 +585,4 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         tmpPos.setTilt(tilt);
         mapView.map().animator().animateTo(300, tmpPos);
     }
-
 }

@@ -32,8 +32,8 @@ public class MapActions {
         fabLocation.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                if(MapActivity.currentLocation != null) {
-                    MapActivity.getCenter(new GeoPoint(MapActivity.currentLocation.getLatitude(), MapActivity.currentLocation.getLongitude()), 0, 0, 0);
+                if(MapActivity.userLocation != null) {
+                    MapActivity.getCenter(new GeoPoint(MapActivity.userLocation.getLatitude(), MapActivity.userLocation.getLongitude()), 0, 0, 0);
                 }
                 else {
                     Toast.makeText(activity, "Location not found", Toast.LENGTH_SHORT).show();

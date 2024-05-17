@@ -44,7 +44,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private static final int PERMISSIONS_FINE_LOCATION = 100;
 
     //default delays
-    public static int LOCATION_DELAY = 1000;        //in milliseconds
+    public static int LOCATION_DELAY = 3000;        //in milliseconds
     public static int TIME_DELAY = 10;             //in records
     public static int SENSOR_DELAY = 100;          //in milliseconds
 
@@ -99,24 +99,24 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         recordCounter = 0;
 
         //Initializing Location and Updating Location
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-        locationRequest = new LocationRequest.Builder(PRIORITY_HIGH_ACCURACY, sharedPref.getInt("location", 1000))
-                .setIntervalMillis(sharedPref.getInt("location", 1000))
-                .setMinUpdateIntervalMillis(sharedPref.getInt("location", 1000))
-                .build();
-        lastLocation();
-        locationCallback = new LocationCallback() {
-            @Override
-            public void onLocationResult(@NonNull LocationResult locationResult) {
-                super.onLocationResult(locationResult);
-                if (locationResult.getLastLocation() != null) {
-                        currentLocation = locationResult.getLastLocation();
-                        updateLocation();
-                }else {
-                    Toast.makeText(MainActivity.this, "last location was null!", Toast.LENGTH_SHORT).show();
-                }
-            }
-        };
+//        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+//        locationRequest = new LocationRequest.Builder(PRIORITY_HIGH_ACCURACY, sharedPref.getInt("location", 1000))
+//                .setIntervalMillis(sharedPref.getInt("location", 1000))
+//                .setMinUpdateIntervalMillis(sharedPref.getInt("location", 1000))
+//                .build();
+//        lastLocation();
+//        locationCallback = new LocationCallback() {
+//            @Override
+//            public void onLocationResult(@NonNull LocationResult locationResult) {
+//                super.onLocationResult(locationResult);
+//                if (locationResult.getLastLocation() != null) {
+//                        currentLocation = locationResult.getLastLocation();
+//                        updateLocation();
+//                }else {
+//                    Toast.makeText(MainActivity.this, "last location was null!", Toast.LENGTH_SHORT).show();
+//                }
+//            }
+//        };
 
         //initialising Sensor services
         SensorManager sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
