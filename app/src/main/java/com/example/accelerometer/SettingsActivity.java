@@ -104,10 +104,9 @@ public class SettingsActivity extends AppCompatActivity {
 
                 Toast.makeText(SettingsActivity.this, "Changes have been saved", Toast.LENGTH_SHORT).show();
                 MainActivity.TIME_DELAY = newTimestamp;
-                MainActivity.LOCATION_DELAY = newLocation;
+                MainActivity.LOCATION_DELAY = newLocation * 1000;
                 MainActivity.SENSOR_DELAY = (int) (newSensor * 1000);
-                Intent intent = new Intent(SettingsActivity.this, MapActivity.class);
-                startActivity(intent);
+                finish();
             }
         });
         builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {

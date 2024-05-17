@@ -9,6 +9,7 @@ import android.widget.Toast;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import org.oscim.android.MapView;
+import org.oscim.core.GeoPoint;
 
 public class MapActions {
     private Activity activity;
@@ -31,7 +32,12 @@ public class MapActions {
         fabLocation.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                //
+                if(MapActivity.currentLocation != null) {
+                    MapActivity.getCenter(new GeoPoint(MapActivity.currentLocation.getLatitude(), MapActivity.currentLocation.getLongitude()), 0, 0, 0);
+                }
+                else {
+                    Toast.makeText(activity, "Location not found", Toast.LENGTH_SHORT).show();
+                }
             }
         });
     }

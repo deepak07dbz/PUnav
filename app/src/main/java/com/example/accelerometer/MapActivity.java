@@ -22,6 +22,7 @@ import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -63,11 +64,13 @@ import org.oscim.android.MapView;
 import org.oscim.android.canvas.AndroidGraphics;
 import org.oscim.backend.canvas.Bitmap;
 import org.oscim.core.GeoPoint;
+import org.oscim.core.MapPosition;
 import org.oscim.event.Gesture;
 import org.oscim.event.GestureListener;
 import org.oscim.event.MotionEvent;
 import org.oscim.layers.Layer;
 import org.oscim.layers.marker.ItemizedLayer;
+import org.oscim.layers.marker.MarkerInterface;
 import org.oscim.layers.marker.MarkerItem;
 import org.oscim.layers.marker.MarkerSymbol;
 import org.oscim.layers.tile.buildings.BuildingLayer;
@@ -88,10 +91,12 @@ import java.util.List;
 public class MapActivity extends AppCompatActivity implements SensorEventListener {
 
     private static final int PERMISSIONS_FINE_LOCATION = 102;
-    private MapView mapView;
+    public boolean markerAdded = false;
+    private static MapView mapView;
     private GraphHopper hopper;
     private GeoPoint start;
     private GeoPoint end;
+    private static MapPosition tmpPos = new MapPosition();
     private volatile boolean prepareInProgress = false;
     private volatile boolean shortestPathRunning = false;
     private final String currentArea = "latest";
@@ -106,9 +111,12 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     private List<RecordsModel> temp;
     Helper helper;
     private FusedLocationProviderClient fusedLocationClient;
-    Location currentLocation;
+    public static Location currentLocation;
     LocationRequest locationRequest;
     private LocationCallback locationCallback;
+    private MarkerItem in, out, current;
+    Handler handler;
+    Runnable runnable;
 
 
     @Override
@@ -186,10 +194,11 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
 
     private void initLocation() {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-        locationRequest = new LocationRequest.Builder(PRIORITY_HIGH_ACCURACY, sharedPreferences.getInt("location", 1000))
-                .setIntervalMillis(sharedPreferences.getInt("location", 1000))
-                .setMinUpdateIntervalMillis(sharedPreferences.getInt("location", 1000))
-                .build();
+        locationRequest = new LocationRequest.Builder(0).setPriority(PRIORITY_HIGH_ACCURACY).setIntervalMillis(0).setMinUpdateIntervalMillis(0).build();
+//        locationRequest = new LocationRequest.Builder(PRIORITY_HIGH_ACCURACY, sharedPreferences.getInt("location", 1000))
+//                .setIntervalMillis(sharedPreferences.getInt("location", 1000))
+//                .setMinUpdateIntervalMillis(sharedPreferences.getInt("location", 1000))
+//                .build();
         lastLocation();
         locationCallback = new LocationCallback() {
             @Override
@@ -281,7 +290,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
 
         // Map position
         mapView.map().setMapPosition(18.551576, 73.831151, 1 << 17);
-        GeoPoint p = new GeoPoint(18.551576, 73.831151);
 
        // setContentView(mapView);
         ViewGroup.LayoutParams params =
@@ -419,7 +427,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
                     mapActions.yAxis.setText(String.valueOf(sensorEvent.values[1]));
                     mapActions.zAxis.setText(String.valueOf(sensorEvent.values[2]));
 
-                processSensorData(sensorEvent);
+                //processSensorData(sensorEvent);
             }
         }
     }
@@ -480,7 +488,8 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         if (start != null && end == null) {
             end = p;
             shortestPathRunning = true;
-            itemizedLayer.addItem(createMarkerItem(p, R.drawable.marker_icon_red));
+            out = createMarkerItem(p, R.drawable.marker_icon_red);
+            itemizedLayer.addItem(out);
             mapView.map().updateMap(true);
 
             calcPath(start.getLatitude(), start.getLongitude(), end.getLatitude(),
@@ -488,14 +497,27 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         } else {
             start = p;
             end = null;
-            // remove routing layers
+            // remove routing layers and markers
             mapView.map().layers().remove(pathLayer);
             itemizedLayer.removeAllItems();
-
-            itemizedLayer.addItem(createMarkerItem(start, R.drawable.marker_icon_green));
+            markerAdded = false;
+            in = createMarkerItem(start, R.drawable.marker_icon_green);
+            itemizedLayer.addItem(in);
             mapView.map().updateMap(true);
+
         }
         return true;
+    }
+
+    public int getMarkerItem(MarkerSymbol symbol) {
+        List<MarkerInterface> mList = itemizedLayer.getItemList();
+        int pos = -1;
+        for (int i = 0; i < mList.size(); i++) {
+            if (mList.get(i).getMarker() == symbol) {
+                pos = i;
+            }
+        }
+        return pos;
     }
 
     @Override
@@ -560,11 +582,15 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     }
 
     private void updateLocation() {
-        itemizedLayer.removeAllItems();
+        if (markerAdded)
+            itemizedLayer.removeItem(getMarkerItem(current.getMarker()));
+
         mapActions.lat.setText(String.valueOf(currentLocation.getLatitude()));
         mapActions.lon.setText(String.valueOf(currentLocation.getLongitude()));
         GeoPoint p = new GeoPoint(currentLocation.getLatitude(), currentLocation.getLongitude());
-        itemizedLayer.addItem(createMarkerItem(p, R.drawable.location_marker));
+        current = createMarkerItem(p, R.drawable.location_marker);
+        itemizedLayer.addItem(current);
+        markerAdded = true;
         addData(new RecordsModel(currentLocation.getLongitude(), currentLocation.getLatitude()));
     }
 
@@ -574,6 +600,17 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         } else {
             Toast.makeText(this, "Check permissions", Toast.LENGTH_SHORT).show();
         }
+    }
+    public static void getCenter(GeoPoint g, int zoom, float bearing, float tilt) {
+        if (zoom == 0) {
+            zoom = mapView.map().getMapPosition().zoomLevel;
+        }
+        double scale = 1 << zoom;
+        tmpPos.setPosition(g);
+        tmpPos.setScale(scale);
+        tmpPos.setBearing(bearing);
+        tmpPos.setTilt(tilt);
+        mapView.map().animator().animateTo(300, tmpPos);
     }
 
 }
