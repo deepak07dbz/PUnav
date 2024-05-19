@@ -1,7 +1,5 @@
 package com.example.accelerometer;
 
-import static com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY;
-
 import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
@@ -18,7 +16,6 @@ import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -30,8 +27,6 @@ import com.example.accelerometer.data.RecordsModel;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationResult;
-import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -60,7 +55,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     LocationRequest locationRequest;
     private LocationCallback locationCallback;
     private List<RecordsModel> temp;
-    long recordCounter;
+   // long recordCounter;
     long lastUpdateSensor;
     long lastUpdateLocation;
     SharedPreferences sharedPref;
@@ -96,7 +91,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         editor.apply();
 
         //timestamp
-        recordCounter = 0;
+       // recordCounter = 0;
 
         //Initializing Location and Updating Location
 //        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
@@ -184,22 +179,22 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         records.setAdapter(readingArrayAdapter);
     }
     private void addData(RecordsModel recordsModel){
-        if(temp.size() != 100){
-            if(recordCounter % sharedPref.getInt("timeStamp", 10) == 0){
-                temp.add(new RecordsModel(recordCounter));
-                recordCounter++;
-            }
-            temp.add(recordsModel);
-            recordCounter++;
-        }else {
-            int i = 0;
-            while(i < temp.size()){
-                helper = new Helper(MainActivity.this);
-                helper.addOne(temp.get(i));
-                i++;
-            }
-            temp.clear();
-        }
+//        if(temp.size() != 100){
+//            if(recordCounter % sharedPref.getInt("timeStamp", 10) == 0){
+//                temp.add(new RecordsModel(recordCounter));
+//                recordCounter++;
+//            }
+//            temp.add(recordsModel);
+//            recordCounter++;
+//        }else {
+//            int i = 0;
+//            while(i < temp.size()){
+//                helper = new Helper(MainActivity.this);
+//                helper.addOne(temp.get(i));
+//                i++;
+//            }
+//            temp.clear();
+//        }
     }
 
     //sensor updates

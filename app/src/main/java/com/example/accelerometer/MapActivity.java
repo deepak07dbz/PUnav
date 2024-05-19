@@ -4,9 +4,13 @@ import static com.example.accelerometer.FileUtils.copyAssetsToStorage;
 import static com.example.accelerometer.MainActivity.LOCATION_DELAY;
 import static com.example.accelerometer.MainActivity.SENSOR_DELAY;
 import static com.example.accelerometer.MainActivity.TIME_DELAY;
+import static com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY;
+import static com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY;
+import static com.google.android.gms.location.Priority.PRIORITY_LOW_POWER;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
@@ -15,11 +19,16 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -27,6 +36,10 @@ import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContract;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -38,6 +51,9 @@ import com.example.accelerometer.data.Helper;
 import com.example.accelerometer.data.RecordsModel;
 import com.google.android.gms.location.CurrentLocationRequest;
 import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
@@ -75,12 +91,16 @@ import org.oscim.tiling.source.mapfile.MapFileTileSource;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.sql.Time;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.LinkedBlockingDeque;
 
 public class MapActivity extends AppCompatActivity implements SensorEventListener {
 
     public boolean markerAdded = false;
+    private boolean permit = false;
     private static MapView mapView;
     private GraphHopper hopper;
     private GeoPoint start;
@@ -92,7 +112,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     private File mapsFolder;
     private ItemizedLayer itemizedLayer;
     private PathLayer pathLayer;
-    private static final int WRITE_PERMISSION_CODE = 101;
+    public static final int REQUEST_PERMISSIONS = 100;
     MapActions mapActions;
     SharedPreferences sharedPreferences;
     long lastUpdateSensor = 0;
@@ -101,12 +121,16 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     Helper helper;
     private FusedLocationProviderClient fusedLocationClient;
     private MarkerItem in, out, current;
-    //using last location
-    Handler handler;
-    Runnable runnable;
+    //location
     public static Location userLocation;
-    //using current location
-    CurrentLocationRequest locationRequest;
+    LocationRequest locationRequest;
+    LocationCallback locationCallback;
+    LocationManager locationManager;
+    //data dumping
+    long recordsCounter = 0;
+    //Sensor
+    SensorManager sensorManager;
+    private static final String[] PERMISSIONS = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.ACCESS_COARSE_LOCATION};
 
 
     @Override
@@ -150,22 +174,26 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         if (!mapsFolder.exists())
             mapsFolder.mkdirs();
 
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-            // Permission is not granted, request it
-            ActivityCompat.requestPermissions(this,
-                    new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                    WRITE_PERMISSION_CODE);
+        helper = new Helper(this);
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            startActivity(intent);
+            Toast.makeText(this, "Ensure location is tuned on", Toast.LENGTH_SHORT).show();
+            finish();
+        }
+        if (!permit) {
+            ActivityCompat.requestPermissions(this, PERMISSIONS, REQUEST_PERMISSIONS);
         } else {
             copyAssetsToStorageIfNeeded(this, "maps/latest-gh", "latest-gh");
             chooseArea();
+            customMapView();
+            updateSharedPref();
+            initSensor();
+            initLocation();
         }
-        customMapView();
-        updateSharedPref();
-        initSensor();
-        initLocation();
-    }
 
+    }
 
     private void updateSharedPref() {
         Context context = getApplicationContext();
@@ -182,20 +210,84 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
 
     private void initLocation() {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-        locationRequest = new CurrentLocationRequest.Builder().build();
-        handler = new Handler();
-        handler.postDelayed(runnable = new Runnable() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "location permissions needed", Toast.LENGTH_SHORT).show();
+            finish();
+        }
+        Task<Location> task = fusedLocationClient.getLastLocation();
+        task.addOnSuccessListener(new OnSuccessListener<Location>() {
             @Override
-            public void run() {
-                handler.postDelayed(runnable, sharedPreferences.getInt("location", 3000));
-                checkLocationPermissions();
+            public void onSuccess(Location location) {
+                if (location != null) {
+                    userLocation = location;
+                    Log.d("LOCATION", "onSuccess: " + location.getLatitude() + " | " + location.getLongitude());
+                    updateLocation();
+                    startLocationUpdates();
+                }else {
+                    Toast.makeText(MapActivity.this, "Ensure location is turned on", Toast.LENGTH_SHORT).show();
+                    finish();
+                }
             }
-        }, sharedPreferences.getInt("location", 3000) );
+        });
+        locationRequest = new LocationRequest.Builder(PRIORITY_HIGH_ACCURACY, sharedPreferences.getInt("location", 1000)).setMinUpdateIntervalMillis(sharedPreferences.getInt("location", 1000)).build();
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(@NonNull LocationResult locationResult) {
+                super.onLocationResult(locationResult);
+                for (Location location : locationResult.getLocations()) {
+                    Log.d("LOCATION", "onLocationResult: " + location.getLatitude() + " | " + location.getLongitude());
+                    userLocation = location;
+                    updateLocation();
+                }
+            }
+        };
+    }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_PERMISSIONS) {
+            boolean allPermissionsGranted = true;
+            for (int res = 0; res < grantResults.length; res++) {
+                if (grantResults[res] != PackageManager.PERMISSION_GRANTED) {
+                    allPermissionsGranted = false;
+                    break;
+                }
+            }
+            if (allPermissionsGranted) {
+                permit = true;
+                copyAssetsToStorageIfNeeded(this, "maps/latest-gh", "latest-gh");
+                chooseArea();
+                customMapView();
+                updateSharedPref();
+                initSensor();
+                initLocation();
+            } else {
+                Toast.makeText(this, "Check permissions: WRITE, LOCATION", Toast.LENGTH_SHORT).show();
+                finish();
+            }
+        }
+    }
+
+
+    private void startLocationUpdates() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
+
+        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
     }
 
     private void initSensor() {
-        SensorManager sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
 
         Sensor accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
 
@@ -206,6 +298,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     //to bring ui elements on top of map
     private void customMapView() {
         ViewGroup inclusionViewGroup = (ViewGroup) findViewById(R.id.custom_map_view);
+        inclusionViewGroup.removeAllViews();
         View inflate = LayoutInflater.from(this).inflate(R.layout.activity_map, null);
         inclusionViewGroup.addView(inflate);
 
@@ -271,9 +364,12 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         // Map position
         mapView.map().setMapPosition(18.551576, 73.831151, 1 << 17);
 
-        // setContentView(mapView);
+        //setContentView(mapView);
         ViewGroup.LayoutParams params =
                 new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        if (mapView.getParent() != null) {
+            ((ViewGroup) mapView.getParent()).removeView(mapView);
+        }
         this.addContentView(mapView, params);
         loadGraphStorage();
     }
@@ -374,13 +470,9 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         Log.i("GH", str);
     }
 
-    private void log(String str, Throwable t) {
-        Log.i("GH", str, t);
-    }
-
     private void logUser(String str) {
         log(str);
-        Toast.makeText(this, str, Toast.LENGTH_LONG).show();
+        Toast.makeText(this, str, Toast.LENGTH_SHORT).show();
     }
 
     boolean isReady() {
@@ -407,14 +499,23 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
                 mapActions.yAxis.setText(String.valueOf(sensorEvent.values[1]));
                 mapActions.zAxis.setText(String.valueOf(sensorEvent.values[2]));
 
-                //processSensorData(sensorEvent);
+               // processSensorData(sensorEvent);
             }
         }
     }
 
     //unoptimized
     private void processSensorData(SensorEvent sensorEvent) {
-        addData(new RecordsModel(sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]));
+       // addData(new RecordsModel(sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]));
+    }
+
+    private void insertData(RecordsModel recordsModel) {
+        if(helper!= null && recordsModel != null) {
+            helper.addOne(recordsModel);
+            recordsCounter++;
+        }
+        else
+            Log.d("DB", "insertData: data null");
     }
 
     private void addData(RecordsModel recordsModel) {
@@ -504,13 +605,15 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     @Override
     protected void onResume() {
         super.onResume();
-        mapView.onResume();
         updateSharedPref();
+       // startLocationUpdates();
+        mapView.onResume();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        //fusedLocationClient.removeLocationUpdates(locationCallback);
         mapView.onPause();
     }
 
@@ -526,6 +629,10 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
 
         // Cleanup VTM
         mapView.map().destroy();
+
+        sensorManager.unregisterListener(this);
+        fusedLocationClient.removeLocationUpdates(locationCallback);
+        //dbHandlerThread.quitSafely();
     }
 
 
@@ -539,39 +646,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         current = createMarkerItem(p, R.drawable.location_marker);
         itemizedLayer.addItem(current);
         markerAdded = true;
-        addData(new RecordsModel(userLocation.getLongitude(), userLocation.getLatitude()));
-    }
-
-    private void checkLocationPermissions() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            getUserLocation();
-        } else {
-            Toast.makeText(this, "Check permissions", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void getUserLocation() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
-            return;
-        }
-        Task<Location> task = fusedLocationClient.getCurrentLocation(locationRequest, null);
-        task.addOnSuccessListener(new OnSuccessListener<Location>() {
-            @Override
-            public void onSuccess(Location location) {
-                if (location != null) {
-                    userLocation = location;
-                    Log.d("LOCATION", String.valueOf(userLocation.getLatitude()) + " " + userLocation.getLongitude());
-                    updateLocation();
-                }
-            }
-        });
+        //addData(new RecordsModel(userLocation.getLongitude(), userLocation.getLatitude()));
     }
 
     public static void getCenter(GeoPoint g, int zoom, float bearing, float tilt) {
