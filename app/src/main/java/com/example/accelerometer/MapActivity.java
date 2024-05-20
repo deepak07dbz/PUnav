@@ -101,6 +101,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
 
     public boolean markerAdded = false;
     private boolean permit = false;
+    private int addOnce = 0;
     private static MapView mapView;
     private GraphHopper hopper;
     private GeoPoint start;
@@ -191,8 +192,18 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
             updateSharedPref();
             initSensor();
             initLocation();
+            startDataService();
         }
 
+    }
+    private void startDataService() {
+        Intent intent = new Intent(MapActivity.this, DataService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent);
+            Log.d("service", "startDataService: service called");
+        } else {
+            startService(intent);
+        }
     }
 
     private void updateSharedPref() {
@@ -202,9 +213,9 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         editor.putInt("sensor", SENSOR_DELAY);
         editor.putInt("location", LOCATION_DELAY);
         editor.putInt("timeStamp", TIME_DELAY);
-        editor.putInt("defaultS", 1);
-        editor.putInt("defaultL", 1);
-        editor.putInt("defaultT", 1);
+//        editor.putInt("defaultS", 1);
+//        editor.putInt("defaultL", 1);
+//        editor.putInt("defaultT", 1);
         editor.apply();
     }
 
@@ -263,6 +274,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
                 updateSharedPref();
                 initSensor();
                 initLocation();
+                startDataService();
             } else {
                 Toast.makeText(this, "Check permissions: WRITE, LOCATION", Toast.LENGTH_SHORT).show();
                 finish();
@@ -499,43 +511,16 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
                 mapActions.yAxis.setText(String.valueOf(sensorEvent.values[1]));
                 mapActions.zAxis.setText(String.valueOf(sensorEvent.values[2]));
 
-               // processSensorData(sensorEvent);
+                if(addOnce == 0) {
+                    RecordsModel recordsModel = new RecordsModel(sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]);
+                    helper.addOne(recordsModel);
+                    Log.d("OLD_INSERTION", "onSensorChanged: " + recordsModel);
+                    addOnce++;
+                }
             }
         }
     }
 
-    //unoptimized
-    private void processSensorData(SensorEvent sensorEvent) {
-       // addData(new RecordsModel(sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]));
-    }
-
-    private void insertData(RecordsModel recordsModel) {
-        if(helper!= null && recordsModel != null) {
-            helper.addOne(recordsModel);
-            recordsCounter++;
-        }
-        else
-            Log.d("DB", "insertData: data null");
-    }
-
-    private void addData(RecordsModel recordsModel) {
-        if (temp.size() != 100) {
-            if (recordCounter % sharedPreferences.getInt("timeStamp", 10) == 0) {
-                temp.add(new RecordsModel(recordCounter));
-                recordCounter++;
-            }
-            temp.add(recordsModel);
-            recordCounter++;
-        } else {
-            int i = 0;
-            while (i < temp.size()) {
-                helper = new Helper(MapActivity.this);
-                helper.addOne(temp.get(i));
-                i++;
-            }
-            temp.clear();
-        }
-    }
 
     @Override
     public void onAccuracyChanged(Sensor sensor, int i) {
@@ -586,7 +571,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
             in = createMarkerItem(start, R.drawable.marker_icon_green);
             itemizedLayer.addItem(in);
             mapView.map().updateMap(true);
-
         }
         return true;
     }
@@ -646,6 +630,12 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         current = createMarkerItem(p, R.drawable.location_marker);
         itemizedLayer.addItem(current);
         markerAdded = true;
+        if (addOnce == 1) {
+            RecordsModel recordsModel = new RecordsModel(userLocation.getLongitude(), userLocation.getLatitude());
+            helper.addOne(recordsModel);
+            Log.d("OLD_INSERT", "updateLocation: " + recordsModel);
+            addOnce++;
+        }
         //addData(new RecordsModel(userLocation.getLongitude(), userLocation.getLatitude()));
     }
 

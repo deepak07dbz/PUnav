@@ -1,8 +1,5 @@
 package com.example.accelerometer.data;
 
-import java.sql.Time;
-import java.time.LocalTime;
-
 public class RecordsModel {
 
     private int id;
@@ -46,6 +43,23 @@ public class RecordsModel {
                 ", lat=" + lat +
                 ", timeStamp=" + timeStamp +
                 '}';
+    }
+
+    public String serialize() {
+        return id + "," + x + "," + y + "," + z + "," + lon + "," + lat + "," + timeStamp;
+    }
+
+    public static RecordsModel deserialize(String data) {
+        String[] parts = data.split(",");
+        int id = parts.length > 0 ? Integer.parseInt(parts[0]) : 0;
+        double x = parts.length > 1 ? Double.parseDouble(parts[1]) : 0.0;
+        double y = parts.length > 2 ? Double.parseDouble(parts[2]) : 0.0;
+        double z = parts.length > 3 ? Double.parseDouble(parts[3]) : 0.0;
+        double lon = parts.length > 4 ? Double.parseDouble(parts[4]) : 0.0;
+        double lat = parts.length > 5 ? Double.parseDouble(parts[5]) : 0.0;
+        long timeStamp = parts.length > 6 ? Long.parseLong(parts[6]) : 0;
+
+        return new RecordsModel(id, x, y, z, lon, lat, timeStamp);
     }
 
     public long getTimeStamp() {
