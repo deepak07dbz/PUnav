@@ -47,6 +47,7 @@ import java.util.concurrent.TimeUnit;
 
 public class DataService extends Service implements SensorEventListener {
     private SensorManager sensorManager;
+    MapActions mapActions;
     private long lastUpdateSensor = 0;
     private FusedLocationProviderClient fusedLocationProviderClient;
     private FileWriter fileWriter;
@@ -75,6 +76,7 @@ public class DataService extends Service implements SensorEventListener {
             Log.d("SERVICE_FILE", "onCreate: failed to open file for writing");
             e.printStackTrace();
         }
+        mapActions = new MapActions(MapActivity.getInstance());
     }
 
     @Override
@@ -122,6 +124,7 @@ public class DataService extends Service implements SensorEventListener {
                 super.onLocationResult(locationResult);
                 for (Location location : locationResult.getLocations()) {
                     Log.d("SERVICE", "onLocationResult: " + location.getLatitude() + location.getLongitude());
+                    MapActivity.getInstance().updateLocation();
                     writeDataToFile(new RecordsModel(location.getLongitude(), location.getLatitude()));
                 }
             }
@@ -130,6 +133,7 @@ public class DataService extends Service implements SensorEventListener {
 
     private void writeDataToFile(RecordsModel recordsModel) {
         try {
+            fileWriter = new FileWriter(new File(getApplicationContext().getFilesDir(), "sensor_location_data.txt"), true);
             fileWriter.write(recordsModel.serialize() + "\n");
             fileWriter.flush();
         } catch (IOException e) {
@@ -150,6 +154,11 @@ public class DataService extends Service implements SensorEventListener {
             long currentTime = System.currentTimeMillis();
             if (currentTime - lastUpdateSensor >= sharedPreferences.getInt("sensor", 100)) {
                 lastUpdateSensor = currentTime;
+
+                mapActions.xAxis.setText(String.valueOf(sensorEvent.values[0]));
+                mapActions.yAxis.setText(String.valueOf(sensorEvent.values[1]));
+                mapActions.zAxis.setText(String.valueOf(sensorEvent.values[2]));
+
                 processSensorData(sensorEvent);
             }
         }

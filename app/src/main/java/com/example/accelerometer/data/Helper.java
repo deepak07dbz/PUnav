@@ -26,14 +26,13 @@ public class Helper extends SQLiteOpenHelper{
     public static final String TIMESTAMP = "TIMESTAMP";
 
     public Helper(Context context){
-        super(context, "Records", null, db_version);
+        super(context, "Records.db", null, db_version);
     }
 
     @Override
     public void onCreate(SQLiteDatabase sqLiteDatabase) {
         String CREATE_TABLE = "CREATE TABLE " + ACCEL_RECORDS + " (" + ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " + XAXIS + " REAL, " + YAXIS + " REAL, " + ZAXIS + " REAL, " + LON + " REAL, " + LAT + " REAL, " + TIMESTAMP + " INTEGER)";
         sqLiteDatabase.execSQL(CREATE_TABLE);
-
     }
 
     @Override

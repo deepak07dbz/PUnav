@@ -21,7 +21,6 @@ import java.io.IOException;
 public class DataWorker extends Worker {
     private Helper helper;
     private long recordsCounter;
-    private int addTen = 0;
     public DataWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
         helper = new Helper(getApplicationContext());
@@ -37,15 +36,15 @@ public class DataWorker extends Worker {
         }
         try {
             BufferedReader reader = new BufferedReader(new FileReader(file));
+            Log.i("WORKER", "doWork: file opened for reading");
             String line;
             while ((line = reader.readLine()) != null) {
                 RecordsModel recordsModel = RecordsModel.deserialize(line);
                 insertIntoDB(recordsModel);
             }
             reader.close();
-            if (file.delete()) {
-                file.createNewFile();
-            }
+            file.delete();
+            Log.i("WORKER", "doWork: file deleted");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -53,15 +52,12 @@ public class DataWorker extends Worker {
     }
 
     private void insertIntoDB(RecordsModel recordsModel) {
-        if (addTen < 10) {
             if (recordsCounter % 10 == 0) {
                 helper.addOne(new RecordsModel(recordsCounter));
                 recordsCounter++;
             }
             helper.addOne(recordsModel);
-            Log.d("NEW_INSERT", "insertIntoDB: " + recordsModel);
+            Log.i("NEW_INSERT", "insertIntoDB: " + recordsModel);
             recordsCounter++;
-            addTen++;
         }
     }
-}

@@ -9,6 +9,7 @@ import static com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY;
 import static com.google.android.gms.location.Priority.PRIORITY_LOW_POWER;
 
 import android.Manifest;
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -48,6 +49,8 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.example.accelerometer.data.Helper;
+import com.example.accelerometer.data.PoiHelper;
+import com.example.accelerometer.data.PoiModel;
 import com.example.accelerometer.data.RecordsModel;
 import com.google.android.gms.location.CurrentLocationRequest;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -89,7 +92,10 @@ import org.oscim.layers.vector.geometries.Style;
 import org.oscim.theme.VtmThemes;
 import org.oscim.tiling.source.mapfile.MapFileTileSource;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.sql.Time;
 import java.util.ArrayList;
@@ -99,11 +105,12 @@ import java.util.concurrent.LinkedBlockingDeque;
 
 public class MapActivity extends AppCompatActivity implements SensorEventListener {
 
+    private static MapActivity mapActivity;
     public boolean markerAdded = false;
     private boolean permit = false;
     private int addOnce = 0;
     private static MapView mapView;
-    private GraphHopper hopper;
+    public static GraphHopper hopper;
     private GeoPoint start;
     private GeoPoint end;
     private static MapPosition tmpPos = new MapPosition();
@@ -117,9 +124,9 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     MapActions mapActions;
     SharedPreferences sharedPreferences;
     long lastUpdateSensor = 0;
-    long recordCounter = 0;
     private List<RecordsModel> temp;
     Helper helper;
+    PoiHelper poiHelper;
     private FusedLocationProviderClient fusedLocationClient;
     private MarkerItem in, out, current;
     //location
@@ -127,12 +134,11 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     LocationRequest locationRequest;
     LocationCallback locationCallback;
     LocationManager locationManager;
-    //data dumping
-    long recordsCounter = 0;
     //Sensor
     SensorManager sensorManager;
     private static final String[] PERMISSIONS = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.ACCESS_COARSE_LOCATION};
-
+    //retrieval
+    Handler handler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -176,6 +182,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
             mapsFolder.mkdirs();
 
         helper = new Helper(this);
+        poiHelper = new PoiHelper(this);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
@@ -186,16 +193,46 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         if (!permit) {
             ActivityCompat.requestPermissions(this, PERMISSIONS, REQUEST_PERMISSIONS);
         } else {
+            if (poiHelper.isTableEmpty()) {
+                loadPoi();
+            }
             copyAssetsToStorageIfNeeded(this, "maps/latest-gh", "latest-gh");
             chooseArea();
             customMapView();
             updateSharedPref();
-            initSensor();
-            initLocation();
+            //initSensor();
+            //initLocation();
             startDataService();
         }
 
     }
+
+    public static MapActivity getInstance() {
+        if (mapActivity == null) {
+            mapActivity = new MapActivity();
+        }
+        return mapActivity;
+    }
+
+    private void loadPoi() {
+        try {
+            Log.d("POI", "loadPoi: insertion started");
+            InputStream inputStream = this.getAssets().open("latest.csv");
+            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split("\\|");
+                String name = parts[4].toLowerCase();
+                double lat = Double.parseDouble(parts[2]);
+                double lon = Double.parseDouble(parts[3]);
+                poiHelper.addOne(new PoiModel(name, lat, lon));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        Toast.makeText(this, "enter start and end points", Toast.LENGTH_SHORT).show();
+    }
+
     private void startDataService() {
         Intent intent = new Intent(MapActivity.this, DataService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -213,9 +250,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         editor.putInt("sensor", SENSOR_DELAY);
         editor.putInt("location", LOCATION_DELAY);
         editor.putInt("timeStamp", TIME_DELAY);
-//        editor.putInt("defaultS", 1);
-//        editor.putInt("defaultL", 1);
-//        editor.putInt("defaultT", 1);
         editor.apply();
     }
 
@@ -268,12 +302,15 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
             }
             if (allPermissionsGranted) {
                 permit = true;
+                if (poiHelper.isTableEmpty()) {
+                    loadPoi();
+                }
                 copyAssetsToStorageIfNeeded(this, "maps/latest-gh", "latest-gh");
                 chooseArea();
                 customMapView();
                 updateSharedPref();
-                initSensor();
-                initLocation();
+                //initSensor();
+               // initLocation();
                 startDataService();
             } else {
                 Toast.makeText(this, "Check permissions: WRITE, LOCATION", Toast.LENGTH_SHORT).show();
@@ -315,7 +352,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         inclusionViewGroup.addView(inflate);
 
         inclusionViewGroup.getParent().bringChildToFront(inclusionViewGroup);
-        mapActions = new MapActions(this, mapView);
+        mapActions = new MapActions(this);
     }
 
     public static void copyAssetsToStorageIfNeeded(Context context, String sourceFolder, String destinationFolder) {
@@ -349,7 +386,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     }
 
     void loadMap(File areaFolder) {
-        logUser("loading map");
+        logUser("loading map", this);
 
         // Map events receiver
         mapView.map().layers().add(new MapEventsReceiver(mapView.map()));
@@ -387,7 +424,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     }
 
     void loadGraphStorage() {
-        logUser("loading graph (" + Constants.VERSION + ") ... ");
+        logUser("loading graph (" + Constants.VERSION + ") ... ", this);
         new GHAsyncTask<Void, Void, Path>() {
             protected Path saveDoInBackground(Void... v) {
                 GraphHopper tmpHopp = new GraphHopper().forMobile();
@@ -401,10 +438,10 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
 
             protected void onPostExecute(Path o) {
                 if (hasError()) {
-                    logUser("An error happened while creating graph:"
+                    log("An error happened while creating graph:"
                             + getErrorMessage());
                 } else {
-                    logUser("Finished loading graph. Long press to define where to start and end the route.");
+                    log("Finished loading graph. Long press to define where to start and end the route.");
                 }
 
                 prepareInProgress = false;
@@ -412,12 +449,12 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         }.execute();
     }
 
-    private PathLayer createPathLayer(ResponsePath response) {
+    private PathLayer createPathLayer(ResponsePath response, Context context) {
         Style style = Style.builder()
                 .fixed(true)
                 .generalization(Style.GENERALIZATION_SMALL)
                 .strokeColor(0x9900cc33)
-                .strokeWidth(4 * getResources().getDisplayMetrics().density)
+                .strokeWidth(4 * context.getResources().getDisplayMetrics().density)
                 .build();
         PathLayer pathLayer = new PathLayer(mapView.map(), style);
         List<GeoPoint> geoPoints = new ArrayList<>();
@@ -438,8 +475,9 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         return markerItem;
     }
 
+
     public void calcPath(final double fromLat, final double fromLon,
-                         final double toLat, final double toLon) {
+                         final double toLat, final double toLon, final Context context) {
 
         log("calculating path ...");
         new AsyncTask<Void, Void, ResponsePath>() {
@@ -449,7 +487,15 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
                 StopWatch sw = new StopWatch().start();
                 GHRequest req = new GHRequest(fromLat, fromLon, toLat, toLon).setProfile("car");
                 req.getHints().putObject(Parameters.Routing.INSTRUCTIONS, false);
-                GHResponse resp = hopper.route(req);
+                GHResponse resp = null;
+                if (hopper != null) {
+                    resp = hopper.route(req);
+                } else {
+                    Log.d("HOPPER", "doInBackground: hopper null");
+                }
+                if (resp == null || resp.hasErrors()) {
+                    Log.d("RESP", "doInBackground: resp null");
+                }
                 time = sw.stop().getSeconds();
                 if (resp.getAll().isEmpty())
                     return null;
@@ -458,20 +504,26 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
 
             protected void onPostExecute(ResponsePath resp) {
                 if (resp == null) {
-                    logUser("Cannot find path");
+                    log("Cannot find path");
                 } else if (!resp.hasErrors()) {
                     log("from:" + fromLat + "," + fromLon + " to:" + toLat + ","
                             + toLon + " found path with distance:" + resp.getDistance()
                             / 1000f + ", nodes:" + resp.getPoints().getSize() + ", time:"
                             + time + " " + resp.getDebugInfo());
-                    logUser("the route is " + (int) (resp.getDistance() / 100) / 10f
+                    log("the route is " + (int) (resp.getDistance() / 100) / 10f
                             + "km long, time:" + resp.getTime() / 60000f + "min, debug:" + time);
 
-                    pathLayer = createPathLayer(resp);
+                    if(getInstance() == null) {
+                        log("null context");
+                    }
+                    if (mapView.map().layers().contains(pathLayer)) {
+                        mapView.map().layers().remove(pathLayer);
+                    }
+                    pathLayer = createPathLayer(resp, context);
                     mapView.map().layers().add(pathLayer);
                     mapView.map().updateMap(true);
                 } else {
-                    logUser("Error:" + resp.getErrors());
+                   log("Error:" + resp.getErrors());
                 }
                 shortestPathRunning = false;
             }
@@ -482,9 +534,9 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         Log.i("GH", str);
     }
 
-    private void logUser(String str) {
+    private void logUser(String str, Context context) {
         log(str);
-        Toast.makeText(this, str, Toast.LENGTH_SHORT).show();
+        Toast.makeText(context, str, Toast.LENGTH_SHORT).show();
     }
 
     boolean isReady() {
@@ -493,10 +545,10 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
             return true;
 
         if (prepareInProgress) {
-            logUser("Preparation still in progress");
+            logUser("Preparation still in progress", this);
             return false;
         }
-        logUser("Prepare finished but GraphHopper not ready. This happens when there was an error while loading the files");
+        logUser("Prepare finished but GraphHopper not ready. This happens when there was an error while loading the files", this);
         return false;
     }
 
@@ -548,7 +600,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
             return false;
 
         if (shortestPathRunning) {
-            logUser("Calculation still in progress");
+            logUser("Calculation still in progress", this);
             return false;
         }
 
@@ -560,7 +612,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
             mapView.map().updateMap(true);
 
             calcPath(start.getLatitude(), start.getLongitude(), end.getLatitude(),
-                    end.getLongitude());
+                    end.getLongitude(), this);
         } else {
             start = p;
             end = null;
@@ -616,11 +668,9 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
 
         sensorManager.unregisterListener(this);
         fusedLocationClient.removeLocationUpdates(locationCallback);
-        //dbHandlerThread.quitSafely();
     }
 
-
-    private void updateLocation() {
+    public void updateLocation() {
         if (markerAdded)
             itemizedLayer.removeItem(getMarkerItem(current.getMarker()));
 
@@ -630,13 +680,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         current = createMarkerItem(p, R.drawable.location_marker);
         itemizedLayer.addItem(current);
         markerAdded = true;
-        if (addOnce == 1) {
-            RecordsModel recordsModel = new RecordsModel(userLocation.getLongitude(), userLocation.getLatitude());
-            helper.addOne(recordsModel);
-            Log.d("OLD_INSERT", "updateLocation: " + recordsModel);
-            addOnce++;
-        }
-        //addData(new RecordsModel(userLocation.getLongitude(), userLocation.getLatitude()));
     }
 
     public static void getCenter(GeoPoint g, int zoom, float bearing, float tilt) {
