@@ -39,6 +39,8 @@ import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -46,8 +48,8 @@ import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 public class DataService extends Service implements SensorEventListener {
+    public static Location curLocation;
     private SensorManager sensorManager;
-    MapActions mapActions;
     private long lastUpdateSensor = 0;
     private FusedLocationProviderClient fusedLocationProviderClient;
     private FileWriter fileWriter;
@@ -70,13 +72,27 @@ public class DataService extends Service implements SensorEventListener {
         });
         sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
+        initLocation();
         try {
             fileWriter = new FileWriter(new File(getApplicationContext().getFilesDir(), "sensor_location_data.txt"), true);
         } catch (IOException e) {
             Log.d("SERVICE_FILE", "onCreate: failed to open file for writing");
             e.printStackTrace();
         }
-        mapActions = new MapActions(MapActivity.getInstance());
+    }
+
+    private void initLocation() {
+        if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        Task<Location> task = fusedLocationProviderClient.getLastLocation();
+        task.addOnSuccessListener(new OnSuccessListener<Location>() {
+            @Override
+            public void onSuccess(Location location) {
+                curLocation = location;
+                getLocationUpdates();
+            }
+        });
     }
 
     @Override
@@ -109,13 +125,6 @@ public class DataService extends Service implements SensorEventListener {
         LocationRequest locationRequest = new LocationRequest.Builder(PRIORITY_HIGH_ACCURACY, sharedPreferences.getInt("location", 1000)).setMinUpdateIntervalMillis(sharedPreferences.getInt("location", 1000)).build();
 
         if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
             return;
         }
         fusedLocationProviderClient.requestLocationUpdates(locationRequest, new LocationCallback() {
@@ -124,7 +133,7 @@ public class DataService extends Service implements SensorEventListener {
                 super.onLocationResult(locationResult);
                 for (Location location : locationResult.getLocations()) {
                     Log.d("SERVICE", "onLocationResult: " + location.getLatitude() + location.getLongitude());
-                    MapActivity.getInstance().updateLocation();
+                    curLocation = location;
                     writeDataToFile(new RecordsModel(location.getLongitude(), location.getLatitude()));
                 }
             }
@@ -154,11 +163,6 @@ public class DataService extends Service implements SensorEventListener {
             long currentTime = System.currentTimeMillis();
             if (currentTime - lastUpdateSensor >= sharedPreferences.getInt("sensor", 100)) {
                 lastUpdateSensor = currentTime;
-
-                mapActions.xAxis.setText(String.valueOf(sensorEvent.values[0]));
-                mapActions.yAxis.setText(String.valueOf(sensorEvent.values[1]));
-                mapActions.zAxis.setText(String.valueOf(sensorEvent.values[2]));
-
                 processSensorData(sensorEvent);
             }
         }

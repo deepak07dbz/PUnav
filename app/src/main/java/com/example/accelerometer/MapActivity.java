@@ -107,6 +107,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
 
     private static MapActivity mapActivity;
     public boolean markerAdded = false;
+    public boolean endAdded = false;
     private boolean permit = false;
     private int addOnce = 0;
     private static MapView mapView;
@@ -118,7 +119,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     private volatile boolean shortestPathRunning = false;
     private final String currentArea = "latest";
     private File mapsFolder;
-    private ItemizedLayer itemizedLayer;
+    public static ItemizedLayer itemizedLayer;
     private PathLayer pathLayer;
     public static final int REQUEST_PERMISSIONS = 100;
     MapActions mapActions;
@@ -192,19 +193,22 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         }
         if (!permit) {
             ActivityCompat.requestPermissions(this, PERMISSIONS, REQUEST_PERMISSIONS);
-        } else {
-            if (poiHelper.isTableEmpty()) {
-                loadPoi();
-            }
-            copyAssetsToStorageIfNeeded(this, "maps/latest-gh", "latest-gh");
-            chooseArea();
-            customMapView();
-            updateSharedPref();
-            //initSensor();
-            //initLocation();
-            startDataService();
         }
+    }
 
+    public void startHandler() {
+        handler = new Handler();
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                handler.postDelayed(this,sharedPreferences.getInt("location", 1000));
+                if (DataService.curLocation != null) {
+                    userLocation = DataService.curLocation;
+                    Log.d("HANDLER", "run: " + userLocation.getLatitude() + " | " + userLocation.getLongitude());
+                    updateLocation();
+                }
+            }
+        }, sharedPreferences.getInt("location", 1000));
     }
 
     public static MapActivity getInstance() {
@@ -253,42 +257,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         editor.apply();
     }
 
-    private void initLocation() {
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            Toast.makeText(this, "location permissions needed", Toast.LENGTH_SHORT).show();
-            finish();
-        }
-        Task<Location> task = fusedLocationClient.getLastLocation();
-        task.addOnSuccessListener(new OnSuccessListener<Location>() {
-            @Override
-            public void onSuccess(Location location) {
-                if (location != null) {
-                    userLocation = location;
-                    Log.d("LOCATION", "onSuccess: " + location.getLatitude() + " | " + location.getLongitude());
-                    updateLocation();
-                    startLocationUpdates();
-                }else {
-                    Toast.makeText(MapActivity.this, "Ensure location is turned on", Toast.LENGTH_SHORT).show();
-                    finish();
-                }
-            }
-        });
-        locationRequest = new LocationRequest.Builder(PRIORITY_HIGH_ACCURACY, sharedPreferences.getInt("location", 1000)).setMinUpdateIntervalMillis(sharedPreferences.getInt("location", 1000)).build();
-        locationCallback = new LocationCallback() {
-            @Override
-            public void onLocationResult(@NonNull LocationResult locationResult) {
-                super.onLocationResult(locationResult);
-                for (Location location : locationResult.getLocations()) {
-                    Log.d("LOCATION", "onLocationResult: " + location.getLatitude() + " | " + location.getLongitude());
-                    userLocation = location;
-                    updateLocation();
-                }
-            }
-        };
-    }
-
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -312,6 +280,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
                 //initSensor();
                // initLocation();
                 startDataService();
+                startHandler();
             } else {
                 Toast.makeText(this, "Check permissions: WRITE, LOCATION", Toast.LENGTH_SHORT).show();
                 finish();
@@ -319,21 +288,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         }
     }
 
-
-    private void startLocationUpdates() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
-            return;
-        }
-
-        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
-    }
 
     private void initSensor() {
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
@@ -466,8 +420,8 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     }
 
     @SuppressWarnings("deprecation")
-    private MarkerItem createMarkerItem(GeoPoint p, int resource) {
-        Drawable drawable = getResources().getDrawable(resource);
+    private MarkerItem createMarkerItem(GeoPoint p, int resource, Context context) {
+        Drawable drawable = context.getResources().getDrawable(resource);
         Bitmap bitmap = AndroidGraphics.drawableToBitmap(drawable);
         MarkerSymbol markerSymbol = new MarkerSymbol(bitmap, 0.5f, 1);
         MarkerItem markerItem = new MarkerItem("", "", p);
@@ -506,6 +460,15 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
                 if (resp == null) {
                     log("Cannot find path");
                 } else if (!resp.hasErrors()) {
+
+                    if (itemizedLayer != null) {
+                        if (endAdded) {
+                            itemizedLayer.removeItem(getMarkerItem(in.getMarker()));
+                        }
+                        in = createMarkerItem(new GeoPoint(toLat, toLon), R.drawable.marker_icon_green, context);
+                        itemizedLayer.addItem(in);
+                        endAdded = true;
+                    }
                     log("from:" + fromLat + "," + fromLon + " to:" + toLat + ","
                             + toLon + " found path with distance:" + resp.getDistance()
                             / 1000f + ", nodes:" + resp.getPoints().getSize() + ", time:"
@@ -596,34 +559,34 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     }
 
     protected boolean onLongPress(GeoPoint p) {
-        if (!isReady())
-            return false;
-
-        if (shortestPathRunning) {
-            logUser("Calculation still in progress", this);
-            return false;
-        }
-
-        if (start != null && end == null) {
-            end = p;
-            shortestPathRunning = true;
-            out = createMarkerItem(p, R.drawable.marker_icon_red);
-            itemizedLayer.addItem(out);
-            mapView.map().updateMap(true);
-
-            calcPath(start.getLatitude(), start.getLongitude(), end.getLatitude(),
-                    end.getLongitude(), this);
-        } else {
-            start = p;
-            end = null;
-            // remove routing layers and markers
-            mapView.map().layers().remove(pathLayer);
-            itemizedLayer.removeAllItems();
-            markerAdded = false;
-            in = createMarkerItem(start, R.drawable.marker_icon_green);
-            itemizedLayer.addItem(in);
-            mapView.map().updateMap(true);
-        }
+//        if (!isReady())
+//            return false;
+//
+//        if (shortestPathRunning) {
+//            logUser("Calculation still in progress", this);
+//            return false;
+//        }
+//
+//        if (start != null && end == null) {
+//            end = p;
+//            shortestPathRunning = true;
+//            out = createMarkerItem(p, R.drawable.marker_icon_red);
+//            itemizedLayer.addItem(out);
+//            mapView.map().updateMap(true);
+//
+//            calcPath(start.getLatitude(), start.getLongitude(), end.getLatitude(),
+//                    end.getLongitude(), this);
+//        } else {
+//            start = p;
+//            end = null;
+//            // remove routing layers and markers
+//            mapView.map().layers().remove(pathLayer);
+//            itemizedLayer.removeAllItems();
+//            markerAdded = false;
+//            in = createMarkerItem(start, R.drawable.marker_icon_green);
+//            itemizedLayer.addItem(in);
+//            mapView.map().updateMap(true);
+//        }
         return true;
     }
 
@@ -677,7 +640,7 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         mapActions.lat.setText(String.valueOf(userLocation.getLatitude()));
         mapActions.lon.setText(String.valueOf(userLocation.getLongitude()));
         GeoPoint p = new GeoPoint(userLocation.getLatitude(), userLocation.getLongitude());
-        current = createMarkerItem(p, R.drawable.location_marker);
+        current = createMarkerItem(p, R.drawable.location_marker, this);
         itemizedLayer.addItem(current);
         markerAdded = true;
     }
