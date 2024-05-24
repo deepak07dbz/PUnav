@@ -1,12 +1,6 @@
 package com.example.accelerometer;
 
 import static com.example.accelerometer.FileUtils.copyAssetsToStorage;
-import static com.example.accelerometer.MainActivity.LOCATION_DELAY;
-import static com.example.accelerometer.MainActivity.SENSOR_DELAY;
-import static com.example.accelerometer.MainActivity.TIME_DELAY;
-import static com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY;
-import static com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY;
-import static com.google.android.gms.location.Priority.PRIORITY_LOW_POWER;
 
 import android.Manifest;
 import android.app.Activity;
@@ -103,20 +97,19 @@ import java.util.List;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
 
-public class MapActivity extends AppCompatActivity implements SensorEventListener {
+public class MapActivity extends AppCompatActivity{
 
+    public static int LOCATION_DELAY = 3000;        //in milliseconds
+    public static int TIME_DELAY = 10;             //in records
+    public static int SENSOR_DELAY = 100;           //in milliseconds
     private static MapActivity mapActivity;
     public boolean markerAdded = false;
     public boolean endAdded = false;
     private boolean permit = false;
-    private int addOnce = 0;
     private static MapView mapView;
     public static GraphHopper hopper;
-    private GeoPoint start;
-    private GeoPoint end;
     private static MapPosition tmpPos = new MapPosition();
     private volatile boolean prepareInProgress = false;
-    private volatile boolean shortestPathRunning = false;
     private final String currentArea = "latest";
     private File mapsFolder;
     public static ItemizedLayer itemizedLayer;
@@ -124,19 +117,13 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     public static final int REQUEST_PERMISSIONS = 100;
     MapActions mapActions;
     SharedPreferences sharedPreferences;
-    long lastUpdateSensor = 0;
-    private List<RecordsModel> temp;
     Helper helper;
     PoiHelper poiHelper;
-    private FusedLocationProviderClient fusedLocationClient;
-    private MarkerItem in, out, current;
+    private MarkerItem in, current;
     //location
     public static Location userLocation;
-    LocationRequest locationRequest;
-    LocationCallback locationCallback;
     LocationManager locationManager;
     //Sensor
-    SensorManager sensorManager;
     private static final String[] PERMISSIONS = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.ACCESS_COARSE_LOCATION};
     //retrieval
     Handler handler;
@@ -151,7 +138,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
             return insets;
         });
 
-        temp = new ArrayList<>();
         mapView = new MapView(this);
 
 
@@ -169,7 +155,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         } else if (Build.VERSION.SDK_INT >= 19) { // greater or equal to Kitkat
             if (!Environment.getExternalStorageState().equals(Environment.MEDIA_MOUNTED)) {
                 Toast.makeText(this, "Not usable without an external storage!", Toast.LENGTH_SHORT).show();
-                baseDir = null;
             }
             baseDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
         } else {
@@ -277,8 +262,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
                 chooseArea();
                 customMapView();
                 updateSharedPref();
-                //initSensor();
-               // initLocation();
                 startDataService();
                 startHandler();
             } else {
@@ -286,16 +269,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
                 finish();
             }
         }
-    }
-
-
-    private void initSensor() {
-        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-
-        Sensor accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-
-        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_NORMAL);
-
     }
 
     //to bring ui elements on top of map
@@ -342,9 +315,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     void loadMap(File areaFolder) {
         logUser("loading map", this);
 
-        // Map events receiver
-        mapView.map().layers().add(new MapEventsReceiver(mapView.map()));
-
         // Map file source
         MapFileTileSource tileSource = new MapFileTileSource();
         File mapFile = new File(areaFolder, currentArea + ".map");
@@ -367,7 +337,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         // Map position
         mapView.map().setMapPosition(18.551576, 73.831151, 1 << 17);
 
-        //setContentView(mapView);
         ViewGroup.LayoutParams params =
                 new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         if (mapView.getParent() != null) {
@@ -469,12 +438,12 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
                         itemizedLayer.addItem(in);
                         endAdded = true;
                     }
-                    log("from:" + fromLat + "," + fromLon + " to:" + toLat + ","
+                    logUser("from:" + fromLat + "," + fromLon + " to:" + toLat + ","
                             + toLon + " found path with distance:" + resp.getDistance()
                             / 1000f + ", nodes:" + resp.getPoints().getSize() + ", time:"
-                            + time + " " + resp.getDebugInfo());
-                    log("the route is " + (int) (resp.getDistance() / 100) / 10f
-                            + "km long, time:" + resp.getTime() / 60000f + "min, debug:" + time);
+                            + time + " " + resp.getDebugInfo(), context);
+                    logUser("the route is " + (int) (resp.getDistance() / 100) / 10f
+                            + "km long, time:" + resp.getTime() / 60000f + "min, debug:" + time, context);
 
                     if(getInstance() == null) {
                         log("null context");
@@ -488,7 +457,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
                 } else {
                    log("Error:" + resp.getErrors());
                 }
-                shortestPathRunning = false;
             }
         }.execute();
     }
@@ -515,81 +483,6 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         return false;
     }
 
-    @Override
-    public void onSensorChanged(SensorEvent sensorEvent) {
-        if (sensorEvent.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            long currentTime = System.currentTimeMillis();
-            if (currentTime - lastUpdateSensor >= sharedPreferences.getInt("sensor", 100)) {
-                lastUpdateSensor = currentTime;
-
-                mapActions.xAxis.setText(String.valueOf(sensorEvent.values[0]));
-                mapActions.yAxis.setText(String.valueOf(sensorEvent.values[1]));
-                mapActions.zAxis.setText(String.valueOf(sensorEvent.values[2]));
-
-                if(addOnce == 0) {
-                    RecordsModel recordsModel = new RecordsModel(sensorEvent.values[0], sensorEvent.values[1], sensorEvent.values[2]);
-                    helper.addOne(recordsModel);
-                    Log.d("OLD_INSERTION", "onSensorChanged: " + recordsModel);
-                    addOnce++;
-                }
-            }
-        }
-    }
-
-
-    @Override
-    public void onAccuracyChanged(Sensor sensor, int i) {
-
-    }
-
-    class MapEventsReceiver extends Layer implements GestureListener {
-
-        MapEventsReceiver(org.oscim.map.Map map) {
-            super(map);
-        }
-
-        @Override
-        public boolean onGesture(Gesture g, MotionEvent e) {
-            if (g instanceof Gesture.LongPress) {
-                GeoPoint p = mMap.viewport().fromScreenPoint(e.getX(), e.getY());
-                return onLongPress(p);
-            }
-            return false;
-        }
-    }
-
-    protected boolean onLongPress(GeoPoint p) {
-//        if (!isReady())
-//            return false;
-//
-//        if (shortestPathRunning) {
-//            logUser("Calculation still in progress", this);
-//            return false;
-//        }
-//
-//        if (start != null && end == null) {
-//            end = p;
-//            shortestPathRunning = true;
-//            out = createMarkerItem(p, R.drawable.marker_icon_red);
-//            itemizedLayer.addItem(out);
-//            mapView.map().updateMap(true);
-//
-//            calcPath(start.getLatitude(), start.getLongitude(), end.getLatitude(),
-//                    end.getLongitude(), this);
-//        } else {
-//            start = p;
-//            end = null;
-//            // remove routing layers and markers
-//            mapView.map().layers().remove(pathLayer);
-//            itemizedLayer.removeAllItems();
-//            markerAdded = false;
-//            in = createMarkerItem(start, R.drawable.marker_icon_green);
-//            itemizedLayer.addItem(in);
-//            mapView.map().updateMap(true);
-//        }
-        return true;
-    }
-
     public int getMarkerItem(MarkerSymbol symbol) {
         List<MarkerInterface> mList = itemizedLayer.getItemList();
         int pos = -1;
@@ -605,14 +498,12 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
     protected void onResume() {
         super.onResume();
         updateSharedPref();
-       // startLocationUpdates();
         mapView.onResume();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        //fusedLocationClient.removeLocationUpdates(locationCallback);
         mapView.onPause();
     }
 
@@ -629,16 +520,12 @@ public class MapActivity extends AppCompatActivity implements SensorEventListene
         // Cleanup VTM
         mapView.map().destroy();
 
-        sensorManager.unregisterListener(this);
-        fusedLocationClient.removeLocationUpdates(locationCallback);
     }
 
     public void updateLocation() {
         if (markerAdded)
             itemizedLayer.removeItem(getMarkerItem(current.getMarker()));
 
-        mapActions.lat.setText(String.valueOf(userLocation.getLatitude()));
-        mapActions.lon.setText(String.valueOf(userLocation.getLongitude()));
         GeoPoint p = new GeoPoint(userLocation.getLatitude(), userLocation.getLongitude());
         current = createMarkerItem(p, R.drawable.location_marker, this);
         itemizedLayer.addItem(current);

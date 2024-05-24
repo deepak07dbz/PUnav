@@ -1,8 +1,9 @@
 package com.example.accelerometer;
 
-import static com.example.accelerometer.MainActivity.LOCATION_DELAY;
-import static com.example.accelerometer.MainActivity.SENSOR_DELAY;
-import static com.example.accelerometer.MainActivity.TIME_DELAY;
+
+import static com.example.accelerometer.MapActivity.LOCATION_DELAY;
+import static com.example.accelerometer.MapActivity.SENSOR_DELAY;
+import static com.example.accelerometer.MapActivity.TIME_DELAY;
 import static com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY;
 
 import android.app.Notification;
@@ -11,7 +12,6 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
@@ -31,7 +31,6 @@ import androidx.core.app.NotificationCompat;
 import androidx.work.ExistingPeriodicWorkPolicy;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
-import androidx.work.impl.utils.ForceStopRunnable;
 
 import com.example.accelerometer.data.RecordsModel;
 import com.google.android.gms.location.FusedLocationProviderClient;

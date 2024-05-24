@@ -38,12 +38,12 @@ public class SettingsActivity extends AppCompatActivity {
     final String[] locationChoices = {"1", "3", "5"};
     final String[] sensorChoices = {"0.06", "0.1", "0.3"};
     final String[] timestamps = {"5", "10", "20"};
-    int checkedItemL;// = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("defaultL", 1);
-    int checkedItemT;// = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("defaultT", 1);
-    int checkedItemS;// = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("defaultS", 1);
-    int newLocation;// = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("location", 1000);
-    int newTimestamp;// = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("timeStamp", 10);
-    double newSensor;// = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("sensor", 100);
+    int checkedItemL;
+    int checkedItemT;
+    int checkedItemS;
+    int newLocation;
+    int newTimestamp;
+    double newSensor;
     SharedPreferences.Editor editor;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -103,9 +103,9 @@ public class SettingsActivity extends AppCompatActivity {
             public void onClick(DialogInterface dialogInterface, int i) {
 
                 Toast.makeText(SettingsActivity.this, "Changes have been saved", Toast.LENGTH_SHORT).show();
-                MainActivity.TIME_DELAY = newTimestamp;
-                MainActivity.LOCATION_DELAY = newLocation * 1000;
-                MainActivity.SENSOR_DELAY = (int) (newSensor * 1000);
+                MapActivity.TIME_DELAY = newTimestamp;
+                MapActivity.LOCATION_DELAY = newLocation * 1000;
+                MapActivity.SENSOR_DELAY = (int) (newSensor * 1000);
                 finish();
             }
         });
