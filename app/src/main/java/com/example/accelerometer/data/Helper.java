@@ -14,7 +14,7 @@ public class Helper extends SQLiteOpenHelper{
     static final int db_version = 1;
 
     //TABLE_NAME
-    public static final String ACCEL_RECORDS = "Accel_Records";
+    public static final String TABLE_NAME = "Accel_Records";
 
     //COLUMN_NAMES
     public static final String ID = "ID";
@@ -31,14 +31,12 @@ public class Helper extends SQLiteOpenHelper{
 
     @Override
     public void onCreate(SQLiteDatabase sqLiteDatabase) {
-        String CREATE_TABLE = "CREATE TABLE " + ACCEL_RECORDS + " (" + ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " + XAXIS + " REAL, " + YAXIS + " REAL, " + ZAXIS + " REAL, " + LON + " REAL, " + LAT + " REAL, " + TIMESTAMP + " INTEGER)";
+        String CREATE_TABLE = "CREATE TABLE " + TABLE_NAME + " (" + ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " + XAXIS + " REAL, " + YAXIS + " REAL, " + ZAXIS + " REAL, " + LON + " REAL, " + LAT + " REAL, " + TIMESTAMP + " INTEGER)";
         sqLiteDatabase.execSQL(CREATE_TABLE);
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase sqLiteDatabase, int i, int i1) {
-       // sqLiteDatabase.execSQL("DROP TABLE IF EXISTS " + ACCEL_RECORDS);
-       // onCreate(sqLiteDatabase);
     }
 
     public boolean addOne(RecordsModel recordsModel){
@@ -52,7 +50,7 @@ public class Helper extends SQLiteOpenHelper{
         cv.put(LAT, recordsModel.getLat());
         cv.put(TIMESTAMP, recordsModel.getTimeStamp());
 
-        long insert = db.insert(ACCEL_RECORDS, null, cv);
+        long insert = db.insert(TABLE_NAME, null, cv);
         if(insert == -1){
             return false;
         }else {
@@ -61,16 +59,33 @@ public class Helper extends SQLiteOpenHelper{
     }
     public void deleteAll(){
         SQLiteDatabase db = getWritableDatabase();
-        db.delete(ACCEL_RECORDS, null, null);
+        db.delete(TABLE_NAME, null, null);
     }
+
+    public List<RecordsModel> getDataSince(long sinceTimestamp) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        List<RecordsModel> dataList = new ArrayList<>();
+        String selectQuery = "SELECT * FROM " + TABLE_NAME + " WHERE " + TIMESTAMP + " > " + sinceTimestamp;
+
+        Cursor cursor = db.rawQuery(selectQuery, null);
+
+        while (cursor.moveToNext()) {
+            int id = cursor.getInt(0);
+            double x = cursor.getDouble(1);
+            double y = cursor.getDouble(2);
+            double z = cursor.getDouble(3);
+            long timestamp = cursor.getLong(6);
+
+            dataList.add(new RecordsModel(id, x, y, z, timestamp));
+        }
+
+        cursor.close();
+        return dataList;
+    }
+
     public List<RecordsModel> getEveyrone(){
         List<RecordsModel> readings = new ArrayList<>();
-        String selectQuery = "SELECT * " +
-//                "CASE\n" +
-//                "WHEN TIMESTAMP % 5 = 0 THEN TIMESTAMP\n" +
-//                "ELSE 1\n" +
-//                "END as TIMESTMAP\n" +
-                "FROM " + ACCEL_RECORDS; //" WHERE TIMESTAMP % 2 = 0";
+        String selectQuery = "SELECT * " + "FROM " + TABLE_NAME;
         SQLiteDatabase db = this.getReadableDatabase();
 
         Cursor cursor = db.rawQuery(selectQuery, null);

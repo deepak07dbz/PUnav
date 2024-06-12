@@ -35,9 +35,9 @@ public class SettingsActivity extends AppCompatActivity {
     ListView optionList;
     Button apply;
     FloatingActionButton fabExport;
-    final String[] locationChoices = {"1", "3", "5"};
-    final String[] sensorChoices = {"0.06", "0.1", "0.3"};
-    final String[] timestamps = {"5", "10", "20"};
+    final String[] locationChoices = {"1", "3", "5"};           //in seconds
+    final String[] sensorChoices = {"0.1", "0.05", "0.3"};      //in seconds
+    final String[] timestamps = {"5", "10", "20"};              //in seconds
     int checkedItemL;
     int checkedItemT;
     int checkedItemS;
@@ -58,7 +58,7 @@ public class SettingsActivity extends AppCompatActivity {
          checkedItemT = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("defaultT", 1);
          checkedItemS = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("defaultS", 1);
          newLocation = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("location", 1000);
-         newTimestamp = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("timeStamp", 10);
+         newTimestamp = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("timeStamp", 10000);
          newSensor = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("sensor", 100);
 
         editor = getSharedPreferences("Setting_values", MODE_PRIVATE).edit();
@@ -103,7 +103,7 @@ public class SettingsActivity extends AppCompatActivity {
             public void onClick(DialogInterface dialogInterface, int i) {
 
                 Toast.makeText(SettingsActivity.this, "Changes have been saved", Toast.LENGTH_SHORT).show();
-                MapActivity.TIME_DELAY = newTimestamp;
+                MapActivity.TIME_DELAY = newTimestamp * 1000;
                 MapActivity.LOCATION_DELAY = newLocation * 1000;
                 MapActivity.SENSOR_DELAY = (int) (newSensor * 1000);
                 finish();

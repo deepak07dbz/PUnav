@@ -28,6 +28,14 @@ public class RecordsModel {
         this.lon = lon;
         this.lat = lat;
     }
+
+    public RecordsModel(int id, double x, double y, double z, long timeStamp) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.timeStamp = timeStamp;
+    }
     public RecordsModel(long timeStamp){
         this.timeStamp = timeStamp;
     }

@@ -9,9 +9,12 @@ import static com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
@@ -50,9 +53,23 @@ public class DataService extends Service implements SensorEventListener {
     public static Location curLocation;
     private SensorManager sensorManager;
     private long lastUpdateSensor = 0;
+    private  long lastUpdateTime = 0;
     private FusedLocationProviderClient fusedLocationProviderClient;
     private FileWriter fileWriter;
     private SharedPreferences sharedPreferences;
+    private static final String UNIQUE_WORK = "DataDumpWork";
+
+    public static final String ACTION_STOP_SERVICE = "ACTION_STOP_SERVICE";
+    public static final String ACTION_STOP_APP = "ACTION_STOP_APP";
+
+    private final BroadcastReceiver stopServiceReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent != null && ACTION_STOP_SERVICE.equals(intent.getAction())) {
+                stopService();
+            }
+        }
+    };
 
     @Override
     public void onCreate() {
@@ -78,6 +95,16 @@ public class DataService extends Service implements SensorEventListener {
             Log.d("SERVICE_FILE", "onCreate: failed to open file for writing");
             e.printStackTrace();
         }
+        IntentFilter filter = new IntentFilter(ACTION_STOP_SERVICE);
+        registerReceiver(stopServiceReceiver, filter);
+    }
+
+    private void stopService() {
+        stopForeground(true);
+        stopSelf();
+        WorkManager.getInstance(getApplicationContext()).cancelUniqueWork("DataInsertionWork");
+        Intent stopApp = new Intent(ACTION_STOP_APP);
+        sendBroadcast(stopApp);
     }
 
     private void initLocation() {
@@ -95,8 +122,18 @@ public class DataService extends Service implements SensorEventListener {
     }
 
     @Override
+    public void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(stopServiceReceiver);
+    }
+
+    @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         super.onStartCommand(intent, flags, startId);
+        if (intent != null && ACTION_STOP_SERVICE.equals(intent.getAction())) {
+            stopService();
+            return START_NOT_STICKY;
+        }
         Log.d("SERVICE", "onStartCommand: service started");
         startForeground(1, getNotification());
         getLocationUpdates();
@@ -105,6 +142,9 @@ public class DataService extends Service implements SensorEventListener {
     }
 
     private Notification getNotification() {
+        Intent stopSelfIntent = new Intent(this, DataService.class);
+        stopSelfIntent.setAction(ACTION_STOP_SERVICE);
+        PendingIntent pStopSelf = PendingIntent.getService(this, 0, stopSelfIntent, PendingIntent.FLAG_IMMUTABLE);
         NotificationChannel channel = null;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             channel = new NotificationChannel("channel_id", "Foreground Service", NotificationManager.IMPORTANCE_DEFAULT);
@@ -116,7 +156,8 @@ public class DataService extends Service implements SensorEventListener {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, "channel_id")
                 .setContentTitle("accelerometer")
                 .setContentText("Collecting sensor and location data")
-                .setSmallIcon(R.drawable.ic_launcher_foreground);
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .addAction(R.drawable.ic_launcher_foreground, "Stop", pStopSelf);
         return builder.build();
     }
 
@@ -160,9 +201,13 @@ public class DataService extends Service implements SensorEventListener {
     public void onSensorChanged(SensorEvent sensorEvent) {
         if (sensorEvent.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
             long currentTime = System.currentTimeMillis();
-            if (currentTime - lastUpdateSensor >= sharedPreferences.getInt("sensor", 100)) {
+            if (currentTime - lastUpdateSensor >= sharedPreferences.getInt("sensor", 50)) {
                 lastUpdateSensor = currentTime;
                 processSensorData(sensorEvent);
+            }
+            if (currentTime - lastUpdateTime >= sharedPreferences.getInt("timeStamp", 10000)) {
+                lastUpdateTime = currentTime;
+                writeDataToFile(new RecordsModel(sensorEvent.timestamp));
             }
         }
     }
@@ -178,11 +223,11 @@ public class DataService extends Service implements SensorEventListener {
 
     public void scheduleDataWorker(Context context) {
         PeriodicWorkRequest workRequest =
-                new PeriodicWorkRequest.Builder(DataWorker.class, 1, TimeUnit.MINUTES)
+                new PeriodicWorkRequest.Builder(DataWorker.class, 15, TimeUnit.MINUTES)
                         .build();
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                "DataDumpWork",
+                UNIQUE_WORK,
                 ExistingPeriodicWorkPolicy.KEEP,
                 workRequest
         );
@@ -195,5 +240,6 @@ public class DataService extends Service implements SensorEventListener {
         editor.putInt("timeStamp", TIME_DELAY);
         editor.apply();
     }
+
 
 }

@@ -3,41 +3,32 @@ package com.example.accelerometer;
 import static com.example.accelerometer.FileUtils.copyAssetsToStorage;
 
 import android.Manifest;
-import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
 import android.location.Location;
-import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContract;
-import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -46,14 +37,6 @@ import com.example.accelerometer.data.Helper;
 import com.example.accelerometer.data.PoiHelper;
 import com.example.accelerometer.data.PoiModel;
 import com.example.accelerometer.data.RecordsModel;
-import com.google.android.gms.location.CurrentLocationRequest;
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationCallback;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationResult;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.tasks.OnSuccessListener;
-import com.google.android.gms.tasks.Task;
 import com.graphhopper.GHRequest;
 import com.graphhopper.GHResponse;
 import com.graphhopper.GraphHopper;
@@ -70,10 +53,6 @@ import org.oscim.android.canvas.AndroidGraphics;
 import org.oscim.backend.canvas.Bitmap;
 import org.oscim.core.GeoPoint;
 import org.oscim.core.MapPosition;
-import org.oscim.event.Gesture;
-import org.oscim.event.GestureListener;
-import org.oscim.event.MotionEvent;
-import org.oscim.layers.Layer;
 import org.oscim.layers.marker.ItemizedLayer;
 import org.oscim.layers.marker.MarkerInterface;
 import org.oscim.layers.marker.MarkerItem;
@@ -91,25 +70,23 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
-import java.sql.Time;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.LinkedBlockingDeque;
 
 public class MapActivity extends AppCompatActivity{
 
     public static int LOCATION_DELAY = 3000;        //in milliseconds
-    public static int TIME_DELAY = 10;             //in records
+    public static int TIME_DELAY = 10000;             //in milliseconds
     public static int SENSOR_DELAY = 100;           //in milliseconds
+    public static final String LAST_TIMESTAMP = "last_timestamp";
     private static MapActivity mapActivity;
     public boolean markerAdded = false;
     public boolean endAdded = false;
     private boolean permit = false;
     private static MapView mapView;
+    private TextView counter;
     public static GraphHopper hopper;
     private static MapPosition tmpPos = new MapPosition();
-    private volatile boolean prepareInProgress = false;
     private final String currentArea = "latest";
     private File mapsFolder;
     public static ItemizedLayer itemizedLayer;
@@ -127,6 +104,21 @@ public class MapActivity extends AppCompatActivity{
     private static final String[] PERMISSIONS = {Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.ACCESS_COARSE_LOCATION};
     //retrieval
     Handler handler;
+    Runnable runnable;
+    //pedometer
+    Pedometer pedometer;
+
+    //broadcast
+    private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent != null && DataService.ACTION_STOP_APP.equals(intent.getAction())) {
+                Log.d("BR", "onReceive: stopped app");
+                stopHandler();
+                finish();
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -137,9 +129,14 @@ public class MapActivity extends AppCompatActivity{
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
+        Log.d("MAIN", "onCreate: started");
+
+        IntentFilter intentFilter = new IntentFilter(DataService.ACTION_STOP_APP);
+        registerReceiver(broadcastReceiver, intentFilter);
+
 
         mapView = new MapView(this);
-
+        counter = findViewById(R.id.TVcounter);
 
         final EditText input = new EditText(this);
         input.setText(currentArea);
@@ -183,7 +180,7 @@ public class MapActivity extends AppCompatActivity{
 
     public void startHandler() {
         handler = new Handler();
-        handler.postDelayed(new Runnable() {
+        handler.postDelayed(runnable = new Runnable() {
             @Override
             public void run() {
                 handler.postDelayed(this,sharedPreferences.getInt("location", 1000));
@@ -264,6 +261,8 @@ public class MapActivity extends AppCompatActivity{
                 updateSharedPref();
                 startDataService();
                 startHandler();
+                pedometer = new Pedometer();
+                new RetrieveStepsTask().execute();
             } else {
                 Toast.makeText(this, "Check permissions: WRITE, LOCATION", Toast.LENGTH_SHORT).show();
                 finish();
@@ -304,7 +303,6 @@ public class MapActivity extends AppCompatActivity{
 
 
     private void chooseArea() {
-        prepareInProgress = true;
         final File areaFolder = new File(mapsFolder, currentArea + "-gh");
         Log.d("OPEN", "chooseArea: " + areaFolder);
         Log.d("OPEN", "opening file");
@@ -366,8 +364,6 @@ public class MapActivity extends AppCompatActivity{
                 } else {
                     log("Finished loading graph. Long press to define where to start and end the route.");
                 }
-
-                prepareInProgress = false;
             }
         }.execute();
     }
@@ -470,19 +466,6 @@ public class MapActivity extends AppCompatActivity{
         Toast.makeText(context, str, Toast.LENGTH_SHORT).show();
     }
 
-    boolean isReady() {
-        // only return true if already loaded
-        if (hopper != null)
-            return true;
-
-        if (prepareInProgress) {
-            logUser("Preparation still in progress", this);
-            return false;
-        }
-        logUser("Prepare finished but GraphHopper not ready. This happens when there was an error while loading the files", this);
-        return false;
-    }
-
     public int getMarkerItem(MarkerSymbol symbol) {
         List<MarkerInterface> mList = itemizedLayer.getItemList();
         int pos = -1;
@@ -520,6 +503,14 @@ public class MapActivity extends AppCompatActivity{
         // Cleanup VTM
         mapView.map().destroy();
 
+        stopHandler();
+        unregisterReceiver(broadcastReceiver);
+    }
+
+    private void stopHandler() {
+        if (handler != null && runnable != null) {
+            handler.removeCallbacks(runnable);
+        }
     }
 
     public void updateLocation() {
@@ -543,4 +534,46 @@ public class MapActivity extends AppCompatActivity{
         tmpPos.setTilt(tilt);
         mapView.map().animator().animateTo(300, tmpPos);
     }
+
+    private class RetrieveStepsTask extends AsyncTask<Void, Void, Integer> {
+        @Override
+        protected Integer doInBackground(Void... voids) {
+            long lastProcessedTimestamp = sharedPreferences.getLong(LAST_TIMESTAMP, 0);
+            List<RecordsModel> data = helper.getDataSince(lastProcessedTimestamp);
+
+            int size = data.size();
+            if (size == 0) {
+                return 0;
+            }
+
+            double[] x = new double[size];
+            double[] y = new double[size];
+            double[] z = new double[size];
+            long[] timestamps = new long[size];
+
+            for (int i = 0; i < size; i++) {
+                RecordsModel datum = data.get(i);
+                x[i] = datum.getX();
+                y[i] = datum.getY();
+                z[i] = datum.getZ();
+                timestamps[i] = datum.getTimeStamp();
+            }
+
+            int stepCount = pedometer.countSteps(x, y, z, size);
+
+            // Update the last processed timestamp
+            long newTimeStamp = timestamps[size - 1];
+            SharedPreferences.Editor editor = sharedPreferences.edit();
+            editor.putLong(LAST_TIMESTAMP, newTimeStamp);
+            editor.apply();
+
+            return stepCount;
+        }
+
+        @Override
+        protected void onPostExecute(Integer stepCount) {
+            counter.setText(String.valueOf(stepCount));
+        }
+    }
+
 }

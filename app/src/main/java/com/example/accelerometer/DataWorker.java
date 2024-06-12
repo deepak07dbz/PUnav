@@ -19,12 +19,10 @@ import java.io.FileWriter;
 import java.io.IOException;
 
 public class DataWorker extends Worker {
-    private Helper helper;
-    private long recordsCounter;
+    private final Helper helper;
     public DataWorker(@NonNull Context context, @NonNull WorkerParameters workerParams) {
         super(context, workerParams);
         helper = new Helper(getApplicationContext());
-        recordsCounter = 0;
     }
 
     @NonNull
@@ -32,7 +30,7 @@ public class DataWorker extends Worker {
     public Result doWork() {
         File file = new File(getApplicationContext().getFilesDir(), "sensor_location_data.txt");
         if (!file.exists()) {
-            Result.success();
+            return Result.success();
         }
         try {
             BufferedReader reader = new BufferedReader(new FileReader(file));
@@ -52,12 +50,7 @@ public class DataWorker extends Worker {
     }
 
     private void insertIntoDB(RecordsModel recordsModel) {
-            if (recordsCounter % 10 == 0) {
-                helper.addOne(new RecordsModel(recordsCounter));
-                recordsCounter++;
-            }
             helper.addOne(recordsModel);
             Log.i("NEW_INSERT", "insertIntoDB: " + recordsModel);
-            recordsCounter++;
         }
     }
