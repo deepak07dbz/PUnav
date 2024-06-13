@@ -9,6 +9,9 @@ import android.util.Log;
 
 import androidx.annotation.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class PoiHelper extends SQLiteOpenHelper {
 
     //table name
@@ -61,6 +64,21 @@ public class PoiHelper extends SQLiteOpenHelper {
             cursor.close();
         }
         return poiModel;
+    }
+
+    public List<String> searchLocations(String name) {
+        String query = "SELECT * FROM " + TABLE_NAME + " WHERE " + NAME + " LIKE ?";
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(query, new String[]{"%" + name + "%"});
+        List<String> locations = new ArrayList<>();
+        if (cursor.moveToFirst()){
+            do {
+                String poiName = cursor.getString(1);
+                locations.add(poiName);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return locations;
     }
 
     public boolean addOne(PoiModel poiModel) {

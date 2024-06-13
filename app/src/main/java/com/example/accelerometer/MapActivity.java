@@ -136,7 +136,7 @@ public class MapActivity extends AppCompatActivity{
 
 
         mapView = new MapView(this);
-        counter = findViewById(R.id.TVcounter);
+        //counter = findViewById(R.id.TVcounter);
 
         final EditText input = new EditText(this);
         input.setText(currentArea);

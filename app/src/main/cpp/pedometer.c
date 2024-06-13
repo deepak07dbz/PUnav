@@ -14,9 +14,9 @@ static int firKernel[LPR_FILT_LEN] = {-5, 6, 34, 68, 84, 68, 34, 6, -5};
 JNIEXPORT jint;
 
 jint Java_com_example_accelerometer_Pedometer_countSteps(JNIEnv *env, jobject instance, jdoubleArray xArray, jdoubleArray yArray, jdoubleArray zArray, jint size) {
-    jfloat *x = (*env)->GetFloatArrayElements(env, xArray, 0);
-    jfloat *y = (*env)->GetFloatArrayElements(env, yArray, 0);
-    jfloat *z = (*env)->GetFloatArrayElements(env, zArray, 0);
+    jdouble *x = (*env)->GetDoubleArrayElements(env, xArray, 0);
+    jdouble *y = (*env)->GetDoubleArrayElements(env, yArray, 0);
+    jdouble *z = (*env)->GetDoubleArrayElements(env, zArray, 0);
 
     float* magnitude = (float*)malloc(size * sizeof(float));
     float* filteredMagnitude = (float*)malloc(size * sizeof(float));

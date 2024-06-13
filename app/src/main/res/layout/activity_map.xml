@@ -105,36 +105,6 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <EditText
-        android:id="@+id/source"
-        android:layout_width="229dp"
-        android:layout_height="48dp"
-        android:layout_marginTop="16dp"
-        android:background="@color/common_google_signin_btn_text_light_default"
-        android:backgroundTint="#CB8AF3"
-        android:backgroundTintMode="src_in"
-        android:ems="10"
-        android:hint="   start (default current)"
-        android:inputType="text"
-        android:textColor="#000000"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <EditText
-        android:id="@+id/dest"
-        android:layout_width="229dp"
-        android:layout_height="48dp"
-        android:layout_marginTop="75dp"
-        android:background="@color/common_google_signin_btn_text_light_default"
-        android:backgroundTint="#DA9AF6"
-        android:ems="10"
-        android:hint="   end"
-        android:inputType="text"
-        android:textColor="#000000"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/searchFAB"
@@ -161,5 +131,31 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
+
+    <AutoCompleteTextView
+        android:id="@+id/autoStart"
+        android:layout_width="229dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="16dp"
+        android:hint="Enter start"
+        android:background="@color/common_google_signin_btn_text_light_default"
+        android:backgroundTint="#DA9AF6"
+        android:textColor="#000000"
+        app:layout_constraintEnd_toStartOf="@+id/searchFAB"
+        app:layout_constraintStart_toEndOf="@+id/settingsFAB"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <AutoCompleteTextView
+        android:id="@+id/autoEnd"
+        android:layout_width="229dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="75dp"
+        android:hint="Enter end"
+        android:textColor="#000000"
+        android:background="@color/common_google_signin_btn_text_light_default"
+        android:backgroundTint="#DA9AF6"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
