@@ -78,13 +78,13 @@ public class MapActivity extends AppCompatActivity{
     public static int LOCATION_DELAY = 3000;        //in milliseconds
     public static int TIME_DELAY = 10000;             //in milliseconds
     public static int SENSOR_DELAY = 100;           //in milliseconds
-    public static final String LAST_TIMESTAMP = "last_timestamp";
+    public static final String LAST_ID = "last_id";
+    public static final int SAMPLE_SIZE = 80;
     private static MapActivity mapActivity;
     public boolean markerAdded = false;
     public boolean endAdded = false;
     private boolean permit = false;
     private static MapView mapView;
-    private TextView counter;
     public static GraphHopper hopper;
     private static MapPosition tmpPos = new MapPosition();
     private final String currentArea = "latest";
@@ -105,8 +105,6 @@ public class MapActivity extends AppCompatActivity{
     //retrieval
     Handler handler;
     Runnable runnable;
-    //pedometer
-    Pedometer pedometer;
 
     //broadcast
     private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
@@ -131,12 +129,12 @@ public class MapActivity extends AppCompatActivity{
         });
         Log.d("MAIN", "onCreate: started");
 
+
         IntentFilter intentFilter = new IntentFilter(DataService.ACTION_STOP_APP);
         registerReceiver(broadcastReceiver, intentFilter);
 
 
         mapView = new MapView(this);
-        //counter = findViewById(R.id.TVcounter);
 
         final EditText input = new EditText(this);
         input.setText(currentArea);
@@ -261,8 +259,7 @@ public class MapActivity extends AppCompatActivity{
                 updateSharedPref();
                 startDataService();
                 startHandler();
-                pedometer = new Pedometer();
-                new RetrieveStepsTask().execute();
+                updateSteps();
             } else {
                 Toast.makeText(this, "Check permissions: WRITE, LOCATION", Toast.LENGTH_SHORT).show();
                 finish();
@@ -535,36 +532,53 @@ public class MapActivity extends AppCompatActivity{
         mapView.map().animator().animateTo(300, tmpPos);
     }
 
+
+    private void updateSteps() {
+        final Handler handler = new Handler();
+        Runnable runnable = new Runnable() {
+            @Override
+            public void run() {
+                new RetrieveStepsTask().execute();
+                handler.postDelayed(this, 4000);
+            }
+        };
+        handler.post(runnable);
+    }
+
     private class RetrieveStepsTask extends AsyncTask<Void, Void, Integer> {
         @Override
         protected Integer doInBackground(Void... voids) {
-            long lastProcessedTimestamp = sharedPreferences.getLong(LAST_TIMESTAMP, 0);
-            List<RecordsModel> data = helper.getDataSince(lastProcessedTimestamp);
+            int lastId = sharedPreferences.getInt(LAST_ID, 0);
+            Log.d("ASYNC", "doInBackground: " + lastId);
+            List<RecordsModel> data = helper.getDataSince(lastId, SAMPLE_SIZE);
+            Log.d("ASYNC", "doInBackground: " + data.size());
 
             int size = data.size();
             if (size == 0) {
                 return 0;
             }
 
-            double[] x = new double[size];
-            double[] y = new double[size];
-            double[] z = new double[size];
-            long[] timestamps = new long[size];
+            float[] x = new float[size];
+            float[] y = new float[size];
+            float[] z = new float[size];
+            int[] ids = new int[size];
 
-            for (int i = 0; i < size; i++) {
+            for (int i = 0; i < SAMPLE_SIZE; i++) {
                 RecordsModel datum = data.get(i);
-                x[i] = datum.getX();
-                y[i] = datum.getY();
-                z[i] = datum.getZ();
-                timestamps[i] = datum.getTimeStamp();
+                x[i] = (float)datum.getX();
+                y[i] = (float) datum.getY();
+                z[i] = (float) datum.getZ();
+                ids[i] = datum.getId();
+
             }
 
-            int stepCount = pedometer.countSteps(x, y, z, size);
+            int stepCount = Pedometer.countSteps(x, y, z, SAMPLE_SIZE);
 
             // Update the last processed timestamp
-            long newTimeStamp = timestamps[size - 1];
+            int newId = ids[SAMPLE_SIZE - 1];
+            Log.d("STEPS", "doInBackground: " + newId);
             SharedPreferences.Editor editor = sharedPreferences.edit();
-            editor.putLong(LAST_TIMESTAMP, newTimeStamp);
+            editor.putInt(LAST_ID, newId);
             editor.apply();
 
             return stepCount;
@@ -572,7 +586,15 @@ public class MapActivity extends AppCompatActivity{
 
         @Override
         protected void onPostExecute(Integer stepCount) {
-            counter.setText(String.valueOf(stepCount));
+            Toast.makeText(MapActivity.this, "counts: " + stepCount, Toast.LENGTH_SHORT).show();
+            String counterText = mapActions.counter.getText().toString().trim();
+            try {
+                int counter = Integer.parseInt(counterText);
+                counter += stepCount;
+                mapActions.counter.setText(String.valueOf(counter));
+            } catch (NumberFormatException e) {
+                Toast.makeText(MapActivity.this, "Invalid counter value", Toast.LENGTH_SHORT).show();
+            }
         }
     }
 

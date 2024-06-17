@@ -32,6 +32,7 @@ public class MapActions {
     private PoiHelper poiHelper;
     private AutoCompleteTextView autoStart, autoEnd;
     String[] locationNames;
+    public TextView counter;
 
     public MapActions(Activity activity) {
         this.activity = activity;
@@ -48,6 +49,7 @@ public class MapActions {
         this.autoStart.setThreshold(1);
         this.autoEnd = activity.findViewById(R.id.autoEnd);
         this.autoEnd.setThreshold(1);
+        this.counter = activity.findViewById(R.id.TVcounter);
         locationNames = new String[2];
         initSettingsButton();
         initLocationButton();

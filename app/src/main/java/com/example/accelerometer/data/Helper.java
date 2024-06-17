@@ -5,6 +5,7 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -62,10 +63,10 @@ public class Helper extends SQLiteOpenHelper{
         db.delete(TABLE_NAME, null, null);
     }
 
-    public List<RecordsModel> getDataSince(long sinceTimestamp) {
+    public List<RecordsModel> getDataSince(int lastId, int count) {
         SQLiteDatabase db = this.getReadableDatabase();
         List<RecordsModel> dataList = new ArrayList<>();
-        String selectQuery = "SELECT * FROM " + TABLE_NAME + " WHERE " + TIMESTAMP + " > " + sinceTimestamp;
+        String selectQuery = "SELECT * FROM " + TABLE_NAME + " WHERE " + ID + " > " + lastId + " LIMIT " + count;
 
         Cursor cursor = db.rawQuery(selectQuery, null);
 
@@ -78,7 +79,8 @@ public class Helper extends SQLiteOpenHelper{
 
             dataList.add(new RecordsModel(id, x, y, z, timestamp));
         }
-
+        Log.d("DB", "getDataSince: last id: " + lastId);
+        Log.d("DB", "getDataSince: size: " + dataList.size());
         cursor.close();
         return dataList;
     }

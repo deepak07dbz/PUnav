@@ -207,7 +207,7 @@ public class DataService extends Service implements SensorEventListener {
             }
             if (currentTime - lastUpdateTime >= sharedPreferences.getInt("timeStamp", 10000)) {
                 lastUpdateTime = currentTime;
-                writeDataToFile(new RecordsModel(sensorEvent.timestamp));
+                writeDataToFile(new RecordsModel(System.currentTimeMillis()));
             }
         }
     }
@@ -223,7 +223,7 @@ public class DataService extends Service implements SensorEventListener {
 
     public void scheduleDataWorker(Context context) {
         PeriodicWorkRequest workRequest =
-                new PeriodicWorkRequest.Builder(DataWorker.class, 15, TimeUnit.MINUTES)
+                new PeriodicWorkRequest.Builder(DataWorker.class, 10, TimeUnit.MINUTES)
                         .build();
 
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
