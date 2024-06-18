@@ -4,8 +4,10 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
@@ -14,6 +16,7 @@ import android.widget.ListView;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -28,13 +31,28 @@ import com.example.accelerometer.data.Helper;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+
 public class SettingsActivity extends AppCompatActivity {
 
-
+    public static final int CREATE_FILE_REQUEST = 1;
+    public static final int PICK_FILE_REQUEST = 2;
     ArrayAdapter<String> options;
     ListView optionList;
     Button apply;
-    FloatingActionButton fabExport;
+    FloatingActionButton fabExport, fabDelete;
     final String[] locationChoices = {"1", "3", "5"};           //in seconds
     final String[] sensorChoices = {"0.1", "0.05", "0.3"};      //in seconds
     final String[] timestamps = {"5", "10", "20"};              //in seconds
@@ -45,6 +63,8 @@ public class SettingsActivity extends AppCompatActivity {
     int newTimestamp;
     double newSensor;
     SharedPreferences.Editor editor;
+    private File zipFile;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -52,6 +72,7 @@ public class SettingsActivity extends AppCompatActivity {
         optionList = findViewById(R.id.optionsview);
         apply = findViewById(R.id.button6);
         fabExport = findViewById(R.id.settingsFAB);
+        fabDelete = findViewById(R.id.deleteFAB);
         showOptions();
 
          checkedItemL = getSharedPreferences("Setting_values", MODE_PRIVATE).getInt("defaultL", 1);
@@ -88,10 +109,101 @@ public class SettingsActivity extends AppCompatActivity {
             @Override
             public void onClick(View view) {
                 Helper helper = new Helper(SettingsActivity.this);
-                helper.deleteAll();
-                Toast.makeText(SettingsActivity.this, "exported", Toast.LENGTH_SHORT).show();
+                helper.backupDb();
+                pickFile();
             }
         });
+
+        fabDelete.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Helper helper = new Helper(SettingsActivity.this);
+                helper.deleteAll();
+                Toast.makeText(SettingsActivity.this, "database has been cleared!", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    private void pickFile() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        startActivityForResult(intent, PICK_FILE_REQUEST);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_FILE_REQUEST && resultCode == RESULT_OK) {
+            if (data != null) {
+                Uri uri = data.getData();
+                if (uri != null) {
+                    createZip(uri);
+                }
+            }
+        }
+        if (requestCode == CREATE_FILE_REQUEST && resultCode == RESULT_OK) {
+            if (data != null) {
+                Uri uri = data.getData();
+                if (uri != null && zipFile != null) {
+                    writeToUri(zipFile, uri);
+                }
+            }
+        }
+    }
+
+    private void writeToUri(File zipFile, Uri uri) {
+        try {
+            InputStream is = new FileInputStream(zipFile);
+            OutputStream os = getContentResolver().openOutputStream(uri);
+
+            FileUtils.copyFile(is, os);
+            Toast.makeText(this, "export success! ", Toast.LENGTH_SHORT).show();
+        }
+        catch (Exception e) {
+            Log.e("EXPORT", "writeToUri: export failed! : ", e);
+        }
+    }
+
+    private void createZip(Uri uri) {
+        try {
+            InputStream is = getContentResolver().openInputStream(uri);
+            if (is == null) {
+                Toast.makeText(this, "failed to open file!", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            File backupDir = new File(getExternalFilesDir(null), Helper.BACKUPDIR);
+            if (!backupDir.exists()) {
+                backupDir.mkdirs();
+            }
+
+            String timeStamp = new SimpleDateFormat("ddMMyyyy_HHmmss", Locale.getDefault()).format(new Date());
+            zipFile = new File(backupDir, "backup_" + timeStamp + ".zip");
+
+            ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile));
+            BufferedInputStream bis = new BufferedInputStream(is);
+
+            zos.putNextEntry(new ZipEntry("records.db"));
+
+            FileUtils.copyFile(bis, zos);
+
+            zos.closeEntry();
+            Toast.makeText(this, "compression success!", Toast.LENGTH_SHORT).show();
+            saveZipFile(zipFile);
+
+        }
+        catch (Exception e) {
+            Log.e("EXPORT", "createZip: error creating zip!: ", e);
+        }
+    }
+
+    private void saveZipFile(File zipFile) {
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/zip");
+        intent.putExtra(Intent.EXTRA_TITLE, zipFile.getName());
+        startActivityForResult(intent, CREATE_FILE_REQUEST);
     }
 
     private void showConfirmation() {

@@ -5,14 +5,28 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.os.Environment;
 import android.util.Log;
 
+import com.example.accelerometer.FileUtils;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 public class Helper extends SQLiteOpenHelper{
 
     static final int db_version = 1;
+    public static final String DB_NAME = "Records.db";
+    public static final String DB_PATH = "/data/data/com.example.accelerometer/databases/";
+    public static final String TAG = "Helper";
+    public static final String BACKUPDIR = "AccelerometerBackup";
 
     //TABLE_NAME
     public static final String TABLE_NAME = "Accel_Records";
@@ -27,7 +41,7 @@ public class Helper extends SQLiteOpenHelper{
     public static final String TIMESTAMP = "TIMESTAMP";
 
     public Helper(Context context){
-        super(context, "Records.db", null, db_version);
+        super(context, DB_NAME, null, db_version);
     }
 
     @Override
@@ -38,6 +52,33 @@ public class Helper extends SQLiteOpenHelper{
 
     @Override
     public void onUpgrade(SQLiteDatabase sqLiteDatabase, int i, int i1) {
+    }
+
+    public void backupDb() {
+        File dbFile = new File(DB_PATH + DB_NAME);
+        File backupDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), BACKUPDIR);
+        if (!backupDir.exists()) {
+            boolean flag = backupDir.mkdirs();
+            Log.d(TAG, "backupDb: mkdir : " + flag);
+            Log.d(TAG, "backupDb: path: " + backupDir.getAbsolutePath());
+        }
+
+        String timeStamp = new SimpleDateFormat("ddMMyyyy_HHmmss", Locale.getDefault()).format(new Date());
+        File backupFile = new File(backupDir, "backup_" + timeStamp + ".db");
+
+        if (!dbFile.exists()) {
+            Log.e(TAG, "backupDb: file doesnt exist");
+        }
+        try {
+            FileInputStream fis = new FileInputStream(dbFile);
+            FileOutputStream fos = new FileOutputStream(backupFile);
+
+            FileUtils.copyFile(fis, fos);
+            Log.d(TAG, "backupDb: database backup up!");
+        }
+        catch (Exception e) {
+            Log.d(TAG, "backupDb: error backing up: " + e);
+        }
     }
 
     public boolean addOne(RecordsModel recordsModel){

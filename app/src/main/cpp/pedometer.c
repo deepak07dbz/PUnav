@@ -127,38 +127,18 @@ JNIEXPORT jint JNICALL Java_com_example_accelerometer_Pedometer_countSteps(JNIEn
         magnitude[i] = sqrt(x[i] * x[i] + y[i] * y[i] + z[i] * z[i]);
     }
 
-//    for(int i = 0; i < size; i++) {
-//        LOGD("MAG: %f ", magnitude[i]);
-//    }
-//    LOGD("\n");
-
     //apply low-pass filter
     lowPassFilter(magnitude, lpf, size);
-//    for(int i = 0; i < size; i++) {
-//        LOGD("LPF: %f ", lpf[i]);
-//    }
-//    LOGD("\n");
 
     //remove mean
     removeMean(lpf, size);
-//    for(int i = 0; i < size; i++) {
-//        LOGD("Mean removal: %f ", lpf[i]);
-//    }
-//    LOGD("\n");
 
     //autocorrelation
     autoCorr(lpf, autoCorrBuff, size);
-//    for(int i = 0; i < NUM_AUTOCORR_LAGS; i++) {
-//        LOGD("AUTOCORR: %ld ", autoCorrBuff[i]);
-//    }
-//    LOGD("\n");
 
     //derivative
     derivative(autoCorrBuff, deriv);
-//    for(int i = 0; i < NUM_AUTOCORR_LAGS; i++) {
-//        LOGD("DERIV: %ld ", deriv[i]);
-//    }
-//    LOGD("\n");
+
 
     //first zero crossing
     int peakIndex = firstZero(deriv);
